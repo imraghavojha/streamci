@@ -9,6 +9,8 @@ public class Pipeline {
 
 
     //    constructors
+    public Pipeline(){}
+
     public Pipeline(int id){
         this.id = id;
     }
