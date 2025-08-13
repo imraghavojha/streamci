@@ -8,43 +8,70 @@ import org.springframework.http.HttpStatus;
 import org.slf4j.Logger;
 import  org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
+
+import java.util.List;
+import java.util.Optional;
 
 @RestController
 public class PipelineController {
 
-    private PipelineService pipelineService;
+    private final PipelineService pipelineService;
     private static final Logger logger = LoggerFactory.getLogger(PipelineController.class);
 
     public PipelineController(PipelineService pipelineService){
         this.pipelineService = pipelineService;
     }
 
-    @GetMapping("api/pipelines/{id}")
+    @GetMapping("/api/pipelines/{id}")
     public ResponseEntity<Pipeline> getPipeline(@PathVariable int id){
-        logger.info("Requested pipeline with ID: {}", id);
-        ArrayList<Pipeline> allPipelines = pipelineService.createFakePipelines(5);
-        for (Pipeline pipeline : allPipelines) {
-            if (pipeline.getId() == id) {
-                logger.info("Successfully found pipeline: {}", pipeline.getName());
-                return ResponseEntity.ok(pipeline);
-            }
+        Optional<Pipeline> result = pipelineService.getPipelineById(id);
+        if (result.isPresent()) {
+            logger.info("Requested pipeline with ID: {}", id);
+            return ResponseEntity.ok(result.get());
+        } else {
+            logger.warn("Pipeline not found for ID: {}", id);
+            return ResponseEntity.notFound().build();
         }
-        logger.warn("Pipeline not found for ID: {}", id);
-        return ResponseEntity.notFound().build();
+
     }
 
     @GetMapping("/api/pipelines")
-    public ResponseEntity<ArrayList<Pipeline>> printPipelines(){
+    public ResponseEntity<List<Pipeline>> printPipelines(){
         logger.info("Requested all pipelines");
-        logger.info("Returning {} pipelines", pipelineService.createFakePipelines(5).size());
-        return ResponseEntity.ok(pipelineService.createFakePipelines(5));
+        return ResponseEntity.ok(pipelineService.getAllPipelines());
     }
+
     @PostMapping("/api/pipelines")
-    public ResponseEntity<Pipeline> addPipeline(@RequestBody Pipeline pipeline){
+    public ResponseEntity<?> addPipeline(@RequestBody Pipeline pipeline){
+        if (pipeline.getName() == null || pipeline.getName().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("Pipeline name is required");
+        }
         logger.info("Received POST request to create pipeline: {}", pipeline.getName());
-        pipeline.setId(6);
-        logger.info("Successfully created pipeline with ID: {}", pipeline.getId());
-        return ResponseEntity.status(HttpStatus.CREATED).body(pipeline);
+        Pipeline savedPipeline = pipelineService.savePipeline(pipeline);
+        logger.info("Successfully created pipeline with ID: {}", savedPipeline.getId());
+        return ResponseEntity.status(HttpStatus.CREATED).body(savedPipeline);
     }
+
+    @PutMapping("/api/pipelines/{id}")
+    public ResponseEntity<Pipeline> updatePipeline(@PathVariable Integer id, @RequestBody Pipeline pipeline){
+        Optional<Pipeline> updatedPipeline = pipelineService.updatePipeline(id, pipeline);
+        if (updatedPipeline.isEmpty()){
+            return ResponseEntity.notFound().build();
+        } else {
+            return ResponseEntity.ok(updatedPipeline.get());
+        }
+    }
+
+    @DeleteMapping("/api/pipelines/{id}")
+    public ResponseEntity<Void> deletePipeline(@PathVariable Integer id){
+        boolean isDeleted = pipelineService.deletePipeline(id);
+        if (isDeleted){
+            logger.info("Successfully deleted pipeline with ID: {}", id);
+            return ResponseEntity.noContent().build();
+        } else {
+            logger.info("Couldn't delete pipeline with ID: {}", id);
+            return ResponseEntity.notFound().build();
+        }
+    }
+
 }

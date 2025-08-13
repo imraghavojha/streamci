@@ -6,7 +6,9 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import java.util.ArrayList;
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 
+@EnableJpaAuditing
 @SpringBootApplication
 public class StreamciApplication implements CommandLineRunner {
 
@@ -24,9 +26,9 @@ public class StreamciApplication implements CommandLineRunner {
 
     // Spring calls this AFTER startup but BEFORE becoming web server
     @Override
-    public void run(String... args) throws Exception{
+    public void run(String... args){
         System.out.println("Started SpringBoot running pipeline demo");
-        ArrayList<Pipeline> data = pipelineService.createFakePipelines(5);
+        ArrayList<Pipeline> data = (ArrayList<Pipeline>) pipelineService.getAllPipelines();
 
         for(Pipeline pipeline : data) {
             System.out.println(pipeline);

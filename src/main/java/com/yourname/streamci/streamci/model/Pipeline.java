@@ -1,32 +1,40 @@
 package com.yourname.streamci.streamci.model;
+import jakarta.persistence.*;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import java.time.LocalDateTime;
 
+@Entity
+@EntityListeners(org.springframework.data.jpa.domain.support.AuditingEntityListener.class)
 public class Pipeline {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int id;
     private String name;
     private String status;
     private int duration;
+
+    @CreatedDate
+    private LocalDateTime createdAt;
+
+    @LastModifiedDate
+    private LocalDateTime updatedAt;
 
 
 
     //    constructors
     public Pipeline(){}
 
-    public Pipeline(int id){
-        this.id = id;
-    }
 
-    public Pipeline(int id, String name){
-        this.id = id;
+    public Pipeline(String name){
         this.name = name;
     }
 
-    public Pipeline(int id, String name, String status){
-        this.id = id;
+    public Pipeline(String name, String status){
         this.name = name;
         this.status = status;
     }
-    public Pipeline(int id, String name, String status, int duration){
-        this.id = id;
+    public Pipeline(String name, String status, int duration){
         this.name = name;
         this.status = status;
         this.duration = duration;
@@ -60,6 +68,14 @@ public class Pipeline {
 
     public String getName() {
         return name;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
     }
 
 
