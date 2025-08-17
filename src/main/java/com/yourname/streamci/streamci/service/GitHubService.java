@@ -1,0 +1,244 @@
+package com.yourname.streamci.streamci.service;
+
+import com.yourname.streamci.streamci.model.*;
+import com.yourname.streamci.streamci.model.Build;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClientException;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Optional;
+
+@Service
+public class GitHubService {
+
+    private static final Logger logger = LoggerFactory.getLogger(GitHubService.class);
+    private final PipelineService pipelineService;
+    private final BuildService buildService;
+    private final RestTemplate restTemplate;
+
+    @Value("${github.token}")
+    private String githubToken;
+
+    public GitHubService(PipelineService pipelineService, BuildService buildService, RestTemplate restTemplate) {
+        this.pipelineService = pipelineService;
+        this.buildService = buildService;
+        this.restTemplate = restTemplate;
+    }
+
+    public boolean testConnection() {
+        try {
+            HttpHeaders headers = createAuthHeaders();
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            ResponseEntity<String> response = restTemplate.exchange(
+                    "https://api.github.com/user",
+                    HttpMethod.GET,
+                    entity,
+                    String.class
+            );
+
+            logger.info("GitHub API connection successful: {}", response.getStatusCode());
+            return true;
+
+        } catch (RestClientException e) {
+            logger.error("Failed to connect to GitHub API: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    public GitHubRepo fetchRepositoryInfo(String owner, String repo) {
+        try {
+            HttpHeaders headers = createAuthHeaders();
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            String url = String.format("https://api.github.com/repos/%s/%s", owner, repo);
+
+            GitHubRepo repoInfo = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    entity,
+                    GitHubRepo.class
+            ).getBody();
+
+            logger.info("Successfully fetched repo info for {}/{}", owner, repo);
+            return repoInfo;
+
+        } catch (RestClientException e) {
+            logger.error("Failed to fetch repository {}/{}: {}", owner, repo, e.getMessage());
+            return null;
+        }
+    }
+
+    public List<WorkflowRun> fetchWorkflowRuns(String owner, String repo) {
+        try {
+            HttpHeaders headers = createAuthHeaders();
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            String url = String.format("https://api.github.com/repos/%s/%s/actions/runs?per_page=10", owner, repo);
+
+            WorkflowRunsResponse response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    entity,
+                    WorkflowRunsResponse.class
+            ).getBody();
+
+            if (response != null && response.getWorkflowRuns() != null) {
+                // Filter out incomplete data
+                List<WorkflowRun> validRuns = response.getWorkflowRuns().stream()
+                        .filter(run -> run.getStatus() != null && run.getConclusion() != null)
+                        .toList();
+
+                logger.info("Found {} valid workflow runs for {}/{}", validRuns.size(), owner, repo);
+                return validRuns;
+            }
+
+            return new ArrayList<>();
+
+        } catch (RestClientException e) {
+            logger.error("Failed to fetch workflow runs for {}/{}: {}", owner, repo, e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    @Transactional
+    public SyncResult syncRepository(String owner, String repo) {
+        logger.info("Starting sync for repository {}/{}", owner, repo);
+
+        GitHubRepo repoInfo = fetchRepositoryInfo(owner, repo);
+        if (repoInfo == null) {
+            return new SyncResult(false, "Repository not found or inaccessible", 0, 0);
+        }
+
+        List<WorkflowRun> workflowRuns = fetchWorkflowRuns(owner, repo);
+        if (workflowRuns.isEmpty()) {
+            logger.warn("No workflow runs found for {}/{}", owner, repo);
+        }
+
+        Pipeline pipeline = mapToPipeline(repoInfo, workflowRuns);
+        Pipeline savedPipeline = savePipeline(pipeline);
+
+        List<Build> builds = mapToBuilds(workflowRuns, savedPipeline);
+        int savedBuildsCount = saveBuilds(builds);
+
+        logger.info("Sync completed for {}/{}: 1 pipeline, {} builds", owner, repo, savedBuildsCount);
+        return new SyncResult(true, "Sync successful", 1, savedBuildsCount);
+    }
+
+    private HttpHeaders createAuthHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "token " + githubToken);
+        headers.set("Accept", "application/vnd.github.v3+json");
+        return headers;
+    }
+
+    private Pipeline mapToPipeline(GitHubRepo repoInfo, List<WorkflowRun> workflowRuns) {
+        String status = "unknown";
+        int avgDuration = 0;
+
+        if (!workflowRuns.isEmpty()) {
+            status = mapGitHubStatusToOurStatus(workflowRuns.get(0).getConclusion());
+
+            avgDuration = workflowRuns.stream()
+                    .filter(run -> run.getCreatedAt() != null && run.getUpdatedAt() != null)
+                    .mapToInt(this::calculateDuration)
+                    .sum() / Math.max(1, workflowRuns.size());
+        }
+
+        return Pipeline.builder()
+                .name(repoInfo.getName())
+                .status(status)
+                .duration(avgDuration)
+                .build();
+    }
+
+    private List<Build> mapToBuilds(List<WorkflowRun> workflowRuns, Pipeline pipeline) {
+        return workflowRuns.stream()
+                .map(run -> Build.builder()
+                        .pipeline(pipeline)
+                        .status(mapGitHubStatusToOurStatus(run.getConclusion()))
+                        .startTime(parseGitHubDateTime(run.getCreatedAt()))
+                        .endTime(parseGitHubDateTime(run.getUpdatedAt()))
+                        .duration(calculateDurationLong(run))
+                        .commitHash(run.getHeadCommit() != null ? run.getHeadCommit().getId() : "unknown")
+                        .committer(run.getHeadCommit() != null && run.getHeadCommit().getAuthor() != null ?
+                                run.getHeadCommit().getAuthor().getName() : "unknown")
+                        .branch("main") // GitHub API doesn't always provide this easily
+                        .build())
+                .toList();
+    }
+
+    private Pipeline savePipeline(Pipeline pipeline) {
+        List<Pipeline> existingPipelines = pipelineService.getAllPipelines();
+        Optional<Pipeline> existing = existingPipelines.stream()
+                .filter(p -> p.getName().equals(pipeline.getName()))
+                .findFirst();
+
+        if (existing.isPresent()) {
+            Pipeline existingPipeline = existing.get();
+            return pipelineService.updatePipeline(existingPipeline.getId(), pipeline)
+                    .orElse(existingPipeline);
+        } else {
+            return pipelineService.savePipeline(pipeline);
+        }
+    }
+
+    private int saveBuilds(List<Build> builds) {
+        int savedCount = 0;
+        for (Build build : builds) {
+            try {
+                buildService.saveBuild(build);
+                savedCount++;
+            } catch (Exception e) {
+                logger.error("Failed to save build: {}", e.getMessage());
+            }
+        }
+        return savedCount;
+    }
+
+    private String mapGitHubStatusToOurStatus(String githubConclusion) {
+        if (githubConclusion == null) return "running";
+        return switch (githubConclusion.toLowerCase()) {
+            case "success" -> "success";
+            case "failure" -> "failure";
+            case "cancelled" -> "cancelled";
+            case "skipped" -> "skipped";
+            default -> "unknown";
+        };
+    }
+
+    private LocalDateTime parseGitHubDateTime(String dateTimeString) {
+        if (dateTimeString == null) return LocalDateTime.now();
+        try {
+            return LocalDateTime.parse(dateTimeString, DateTimeFormatter.ISO_DATE_TIME);
+        } catch (Exception e) {
+            logger.warn("Failed to parse datetime: {}", dateTimeString);
+            return LocalDateTime.now();
+        }
+    }
+
+    private int calculateDuration(WorkflowRun run) {
+        if (run.getCreatedAt() == null || run.getUpdatedAt() == null) return 0;
+
+        LocalDateTime start = parseGitHubDateTime(run.getCreatedAt());
+        LocalDateTime end = parseGitHubDateTime(run.getUpdatedAt());
+
+        return (int) java.time.Duration.between(start, end).toMinutes();
+    }
+
+    private Long calculateDurationLong(WorkflowRun run) {
+        return (long) calculateDuration(run);
+    }
+}
