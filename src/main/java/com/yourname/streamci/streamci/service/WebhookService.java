@@ -24,14 +24,18 @@ public class WebhookService {
     private static final Logger logger = LoggerFactory.getLogger(WebhookService.class);
     private final PipelineService pipelineService;
     private final BuildService buildService;
+    private final QueueService queueService;
     private final ObjectMapper objectMapper;
 
     @Value("${github.webhook.secret:default-secret}")
     private String webhookSecret;
 
-    public WebhookService(PipelineService pipelineService, BuildService buildService) {
+    public WebhookService(PipelineService pipelineService,
+                          BuildService buildService,
+                          QueueService queueService) {
         this.pipelineService = pipelineService;
         this.buildService = buildService;
+        this.queueService = queueService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -92,18 +96,40 @@ public class WebhookService {
             // find or create pipeline
             Pipeline pipeline = findOrCreatePipeline(repoName);
 
-            // create build from webhook data
-            Build build = extractBuildFromWebhook(workflowRun, pipeline);
+            // extract workflow info
+            String workflowId = workflowRun.path("id").asText();
+            String status = workflowRun.path("status").asText("unknown");
+            String conclusion = workflowRun.path("conclusion").asText();
 
-            // save to database
-            Build savedBuild = buildService.saveBuild(build);
-            logger.info("Created build {} for pipeline {}", savedBuild.getBuildId(), pipeline.getName());
+            logger.info("processing workflow {} with status: {} conclusion: {}",
+                    workflowId, status, conclusion);
 
-            // update pipeline status
-            updatePipelineStatus(pipeline, build);
+            // track queue status based on workflow status
+            if ("queued".equals(status) || "waiting".equals(status) || "pending".equals(status)) {
+                // build is queued
+                logger.info("tracking queued build: {}", workflowId);
+                queueService.trackBuildQueued(workflowId, pipeline.getId());
+
+            } else if ("in_progress".equals(status)) {
+                // build started running
+                logger.info("tracking build started: {}", workflowId);
+                queueService.trackBuildStarted(workflowId);
+
+            } else if ("completed".equals(status)) {
+                // build completed
+                logger.info("tracking build completed: {}", workflowId);
+                queueService.trackBuildCompleted(workflowId);
+
+                // also create the build record as before
+                Build build = extractBuildFromWebhook(workflowRun, pipeline);
+                Build savedBuild = buildService.saveBuild(build);
+                logger.info("created build {} for pipeline {}", savedBuild.getBuildId(), pipeline.getName());
+
+                updatePipelineStatus(pipeline, build);
+            }
 
         } catch (Exception e) {
-            logger.error("Error processing webhook: {}", e.getMessage());
+            logger.error("error processing webhook: {}", e.getMessage(), e);
         }
     }
 
@@ -190,7 +216,6 @@ public class WebhookService {
             case "skipped" -> "skipped";
             case "null", "" -> "unknown";
             default -> {
-                // If status is still in_progress but we got here, check if it's actually running
                 logger.debug("Unknown GitHub status: {}", githubStatus);
                 yield "unknown";
             }
@@ -203,8 +228,6 @@ public class WebhookService {
         }
 
         try {
-            // GitHub sends timestamps like "2025-08-17T17:07:08Z" in UTC
-            // Parse as Instant and convert to LocalDateTime
             if (dateTimeStr.contains("Z") || dateTimeStr.contains("+")) {
                 java.time.Instant instant = java.time.Instant.parse(dateTimeStr);
                 return LocalDateTime.ofInstant(instant, java.time.ZoneId.systemDefault());
