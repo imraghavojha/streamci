@@ -111,15 +111,18 @@ public class MetricsService {
     }
 
     private void calculateDurationMetrics(PipelineMetrics metrics, List<Build> builds) {
+        // Include ALL builds with non-null duration (including 0)
         List<Long> durations = builds.stream()
-                .filter(b -> b.getDuration() != null && b.getDuration() > 0)
+                .filter(b -> b.getDuration() != null)
                 .map(Build::getDuration)
                 .collect(Collectors.toList());
 
         if (!durations.isEmpty()) {
+            // For average, include zeros
             metrics.setAvgDurationSeconds(
                     (long) durations.stream().mapToLong(Long::longValue).average().orElse(0)
             );
+
             metrics.setMinDurationSeconds(
                     durations.stream().min(Long::compare).orElse(0L)
             );
@@ -140,21 +143,21 @@ public class MetricsService {
 
         // builds today
         long todayCount = builds.stream()
-                .filter(b -> b.getCreatedAt() != null && b.getCreatedAt().isAfter(todayStart))
+                .filter(b -> getEffectiveTimestamp(b) != null && getEffectiveTimestamp(b).isAfter(todayStart))
                 .count();
         metrics.setBuildsToday((int) todayCount);
 
         // builds this week
         long weekCount = builds.stream()
-                .filter(b -> b.getCreatedAt() != null && b.getCreatedAt().isAfter(weekStart))
+                .filter(b -> getEffectiveTimestamp(b) != null && getEffectiveTimestamp(b).isAfter(weekStart))
                 .count();
         metrics.setBuildsThisWeek((int) weekCount);
 
         // find peak hour
         Map<Integer, Long> hourCounts = builds.stream()
-                .filter(b -> b.getCreatedAt() != null)
+                .filter(b -> getEffectiveTimestamp(b) != null)
                 .collect(Collectors.groupingBy(
-                        b -> b.getCreatedAt().getHour(),
+                        b -> getEffectiveTimestamp(b).getHour(),
                         Collectors.counting()
                 ));
 
@@ -168,9 +171,9 @@ public class MetricsService {
 
         // find peak day
         Map<DayOfWeek, Long> dayCounts = builds.stream()
-                .filter(b -> b.getCreatedAt() != null)
+                .filter(b -> getEffectiveTimestamp(b) != null)
                 .collect(Collectors.groupingBy(
-                        b -> b.getCreatedAt().getDayOfWeek(),
+                        b -> getEffectiveTimestamp(b).getDayOfWeek(),
                         Collectors.counting()
                 ));
 
@@ -186,8 +189,8 @@ public class MetricsService {
     private void calculateFailureAnalysis(PipelineMetrics metrics, List<Build> builds) {
         // sort builds by time
         List<Build> sortedBuilds = builds.stream()
-                .filter(b -> b.getCreatedAt() != null)
-                .sorted(Comparator.comparing(Build::getCreatedAt).reversed())
+                .filter(b -> getEffectiveTimestamp(b) != null)
+                .sorted(Comparator.comparing(this::getEffectiveTimestamp).reversed())
                 .collect(Collectors.toList());
 
         // find consecutive failures
@@ -205,18 +208,18 @@ public class MetricsService {
         sortedBuilds.stream()
                 .filter(b -> "success".equalsIgnoreCase(b.getStatus()))
                 .findFirst()
-                .ifPresent(b -> metrics.setLastSuccess(b.getCreatedAt()));
+                .ifPresent(b -> metrics.setLastSuccess(getEffectiveTimestamp(b)));
 
         sortedBuilds.stream()
                 .filter(b -> "failure".equalsIgnoreCase(b.getStatus()))
                 .findFirst()
-                .ifPresent(b -> metrics.setLastFailure(b.getCreatedAt()));
+                .ifPresent(b -> metrics.setLastFailure(getEffectiveTimestamp(b)));
 
         // find most common failure time
         Map<Integer, Long> failureHours = builds.stream()
-                .filter(b -> "failure".equalsIgnoreCase(b.getStatus()) && b.getCreatedAt() != null)
+                .filter(b -> "failure".equalsIgnoreCase(b.getStatus()) && getEffectiveTimestamp(b) != null)
                 .collect(Collectors.groupingBy(
-                        b -> b.getCreatedAt().getHour(),
+                        b -> getEffectiveTimestamp(b).getHour(),
                         Collectors.counting()
                 ));
 
@@ -228,6 +231,29 @@ public class MetricsService {
             metrics.setMostCommonFailureTime(commonFailureHour + ":00");
         }
     }
+
+    // helper method
+    private LocalDateTime getEffectiveTimestamp(Build build) {
+        // Prefer startTime first as it's the actual build start
+        if (build.getStartTime() != null) {
+            return build.getStartTime();
+        }
+        // Then try endTime
+        if (build.getEndTime() != null) {
+            return build.getEndTime();
+        }
+        // Only use createdAt as last resort
+        // But DON'T use it if it's too recent (likely auto-set by JPA)
+        if (build.getCreatedAt() != null) {
+            LocalDateTime now = LocalDateTime.now();
+            // If createdAt is within last 5 minutes, it's probably auto-set
+            if (build.getCreatedAt().isBefore(now.minusMinutes(5))) {
+                return build.getCreatedAt();
+            }
+        }
+        return null; // Return null if no valid timestamp
+    }
+
 
     private void calculateTrends(PipelineMetrics current, PipelineMetrics previous) {
         // success rate change
