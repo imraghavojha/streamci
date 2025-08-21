@@ -3,6 +3,7 @@
 package com.yourname.streamci.streamci;
 
 import com.yourname.streamci.streamci.service.PipelineService;
+import com.yourname.streamci.streamci.*;
 import com.yourname.streamci.streamci.model.Pipeline;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
