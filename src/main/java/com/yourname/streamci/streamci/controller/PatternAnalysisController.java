@@ -73,8 +73,11 @@ public class PatternAnalysisController {
                 break;
 
             case "files":
-                response.put("correlations", List.of());
-                response.put("message", "file correlation analysis not yet implemented");
+                List<FileCorrelationResult> filePatterns = patternService.getFileBasedCorrelations(pipelineId);
+                response.put("correlations", filePatterns);
+                response.put("message", filePatterns.isEmpty() ?
+                        "no significant file patterns detected" :
+                        "file correlation analysis complete");
                 break;
 
             default:

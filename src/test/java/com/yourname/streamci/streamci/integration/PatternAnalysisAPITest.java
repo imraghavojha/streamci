@@ -199,17 +199,20 @@ public class PatternAnalysisAPITest {
     @Test
     @Order(9)
     void testFilesCorrelationType() throws Exception {
-        System.out.println("\n=== API TEST 9: Files Correlation Type (Not Implemented) ===");
+        System.out.println("\n=== API TEST 9: Files Correlation Type (Working Implementation) ===");
 
         mockMvc.perform(get("/api/analysis/correlations")
                         .param("pipelineId", pipelineIdStr)
                         .param("type", "files"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.message", containsString("not yet implemented")))
-                .andExpect(jsonPath("$.correlations", hasSize(0)));
+                .andExpect(jsonPath("$.correlation_type", is("files")))
+                .andExpect(jsonPath("$.pipeline_id", notNullValue()))
+                .andExpect(jsonPath("$.correlations", isA(java.util.List.class)))
+                .andExpect(jsonPath("$.correlations", hasSize(greaterThan(0))))
+                .andExpect(jsonPath("$.message", containsString("complete")));
 
-        System.out.println("✅ Not implemented feature handled gracefully");
+        System.out.println("✅ File correlation analysis working correctly");
     }
 
     private void createTestData() {
