@@ -1,5 +1,3 @@
-// Add this to your StreamciApplication.java main class
-
 package com.yourname.streamci.streamci;
 
 import com.yourname.streamci.streamci.service.PipelineService;

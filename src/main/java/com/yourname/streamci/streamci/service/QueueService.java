@@ -1,7 +1,11 @@
 package com.yourname.streamci.streamci.service;
 
+import com.yourname.streamci.streamci.event.BuildCompletedEvent;
+import com.yourname.streamci.streamci.event.QueueStatusChangedEvent;
 import com.yourname.streamci.streamci.model.*;
 import com.yourname.streamci.streamci.repository.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
@@ -13,6 +17,9 @@ import java.util.stream.Collectors;
 
 @Service
 public class QueueService {
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     private static final Logger logger = LoggerFactory.getLogger(QueueService.class);
 
@@ -117,6 +124,19 @@ public class QueueService {
 
         trackerRepository.save(qt);
         logger.info("build {} completed after {} seconds", buildId, qt.getRunTimeSeconds());
+
+        // NEW: Publish WebSocket event for build completion
+        eventPublisher.publishEvent(new BuildCompletedEvent(
+                this,
+                buildId,
+                qt.getPipeline().getId(),
+                "completed", // you might want to pass actual build status here
+                qt.getRunTimeSeconds(),
+                qt.getCompletedAt()
+        ));
+
+        // NEW: Publish queue status change event
+        publishQueueStatusChange(qt.getPipeline().getId());
     }
 
     // calculate current queue metrics
@@ -283,5 +303,14 @@ public class QueueService {
         int peakDepth;
         String trend;
         double slope;
+    }
+
+    private void publishQueueStatusChange(Integer pipelineId) {
+        int queued = trackerRepository.findByPipelineIdAndStatus(pipelineId, "queued").size();
+        int running = trackerRepository.findByPipelineIdAndStatus(pipelineId, "running").size();
+
+        eventPublisher.publishEvent(new QueueStatusChangedEvent(
+                this, pipelineId, queued, running
+        ));
     }
 }
