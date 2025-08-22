@@ -244,7 +244,7 @@ public class AdvancedAlertSystemTest {
 
         System.out.println("✅ Alert no longer appears in active list");
     }
-    
+
     @Test
     @Order(7)
     void testAlertCooldownPeriod() {
