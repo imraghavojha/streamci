@@ -1,0 +1,33 @@
+spring.application.name=streamci
+
+# Database Configuration - Production Environment Variables
+# Set these as environment variables in your deployment platform
+spring.datasource.url=${DATABASE_URL:jdbc:postgresql://your-supabase-host:6543/postgres?sslmode=require&prepareThreshold=0&preparedStatementCacheQueries=0}
+spring.datasource.username=${DATABASE_USERNAME:postgres.your-project-ref}
+spring.datasource.password=${DATABASE_PASSWORD:your-database-password}
+spring.datasource.driver-class-name=org.postgresql.Driver
+
+# Connection Pool Settings for Supabase
+spring.datasource.hikari.maximum-pool-size=5
+spring.datasource.hikari.minimum-idle=1
+spring.datasource.hikari.connection-timeout=20000
+
+# JPA Configuration for Production
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=false
+spring.jpa.properties.hibernate.format_sql=false
+
+# Server Configuration
+server.port=${PORT:8080}
+
+# CORS Configuration - Production Frontend URL
+cors.allowed.origins=${FRONTEND_URL:https://your-app.vercel.app}
+
+# GitHub Integration - Set as environment variables
+github.token=${GITHUB_TOKEN:your-github-token}
+github.webhook.secret=${GITHUB_WEBHOOK_SECRET:your-webhook-secret}
+
+# Logging - Production Level
+logging.level.org.springframework.web=INFO
+logging.level.org.hibernate.SQL=WARN
+logging.level.com.yourname.streamci.streamci=INFO

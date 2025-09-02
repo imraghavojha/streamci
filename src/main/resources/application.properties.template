@@ -1,0 +1,20 @@
+spring.application.name=streamci
+
+# Database Configuration - REPLACE WITH YOUR VALUES
+spring.datasource.url=jdbc:postgresql://your-supabase-host:6543/postgres?sslmode=require&prepareThreshold=0&preparedStatementCacheQueries=0
+spring.datasource.username=postgres.your-project-ref
+spring.datasource.password=YOUR_ACTUAL_PASSWORD
+spring.datasource.driver-class-name=org.postgresql.Driver
+
+# JPA Configuration
+spring.jpa.hibernate.ddl-auto=create-drop
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
+
+# GitHub Integration - REPLACE WITH YOUR TOKENS
+github.token=YOUR_GITHUB_TOKEN
+github.webhook.secret=YOUR_WEBHOOK_SECRET
+
+# Logging
+logging.level.org.springframework.web=DEBUG
+logging.level.org.hibernate.SQL=DEBUG
