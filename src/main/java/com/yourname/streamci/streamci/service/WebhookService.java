@@ -26,16 +26,18 @@ public class WebhookService {
     private final BuildService buildService;
     private final QueueService queueService;
     private final ObjectMapper objectMapper;
+    private final EventCounter eventCounter;
 
     @Value("${github.webhook.secret:default-secret}")
     private String webhookSecret;
 
     public WebhookService(PipelineService pipelineService,
                           BuildService buildService,
-                          QueueService queueService) {
+                          QueueService queueService, EventCounter eventCounter) {
         this.pipelineService = pipelineService;
         this.buildService = buildService;
         this.queueService = queueService;
+        this.eventCounter = eventCounter;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -74,6 +76,9 @@ public class WebhookService {
     @Async
     public void processWebhookAsync(String eventType, String payload) {
         logger.info("Processing webhook event: {}", eventType);
+
+        // count every webhook event processed
+        eventCounter.incrementEvents();
 
         // only process workflow_run events
         if (!"workflow_run".equals(eventType)) {

@@ -3,6 +3,7 @@ package com.yourname.streamci.streamci.controller;
 import com.yourname.streamci.streamci.model.*;
 import com.yourname.streamci.streamci.service.*;
 import com.yourname.streamci.streamci.repository.*;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.slf4j.Logger;
@@ -28,6 +29,7 @@ public class DashboardController {
     private final PipelineMetricsRepository metricsRepository;
     private final QueueTrackerRepository queueTrackerRepository;
     private final AlertRepository alertRepository;
+    private final EventCounter eventCounter;
 
     public DashboardController(PipelineService pipelineService,
                                MetricsService metricsService,
@@ -36,7 +38,7 @@ public class DashboardController {
                                BuildRepository buildRepository,
                                PipelineMetricsRepository metricsRepository,
                                QueueTrackerRepository queueTrackerRepository,
-                               AlertRepository alertRepository) {
+                               AlertRepository alertRepository, EventCounter eventCounter) {
         this.pipelineService = pipelineService;
         this.metricsService = metricsService;
         this.queueService = queueService;
@@ -45,6 +47,7 @@ public class DashboardController {
         this.metricsRepository = metricsRepository;
         this.queueTrackerRepository = queueTrackerRepository;
         this.alertRepository = alertRepository;
+        this.eventCounter = eventCounter;
     }
 
     /**
@@ -53,10 +56,17 @@ public class DashboardController {
      * Returns all key metrics in one consolidated response
      */
     @GetMapping("/summary")
+//    @Cacheable("dashboard-summary")
     public ResponseEntity<Map<String, Object>> getDashboardSummary() {
         logger.info("Fetching dashboard summary");
 
         Map<String, Object> summary = new HashMap<>();
+
+        // event counter metrics
+        summary.put("events_per_minute", eventCounter.getEventsPerMinute());
+        summary.put("total_events_processed", eventCounter.getTotalEvents());
+        summary.put("uptime_minutes", eventCounter.getUptimeMinutes());
+
         summary.put("timestamp", LocalDateTime.now());
         summary.put("status", "success");
 
