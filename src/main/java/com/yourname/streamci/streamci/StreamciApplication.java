@@ -25,7 +25,15 @@ public class StreamciApplication implements CommandLineRunner {
     }
 
     public static void main(String[] args) {
-        SpringApplication.run(StreamciApplication.class, args);
+        SpringApplication app = new SpringApplication(StreamciApplication.class);
+
+        // Auto-detect Railway environment and set production profile
+        if (System.getenv("RAILWAY_ENVIRONMENT") != null || System.getenv("PORT") != null) {
+            System.setProperty("spring.profiles.active", "prod");
+            System.out.println("🚂 Railway environment detected - activating production profile");
+        }
+
+        app.run(args);
     }
 
     @Bean
@@ -36,13 +44,21 @@ public class StreamciApplication implements CommandLineRunner {
     // Spring calls this AFTER startup but BEFORE becoming web server
     @Override
     public void run(String... args){
-        System.out.println("Started SpringBoot running pipeline demo");
-        ArrayList<Pipeline> data = (ArrayList<Pipeline>) pipelineService.getAllPipelines();
+        System.out.println("🚀 StreamCI Application Started Successfully!");
+        System.out.println("📊 Active Profile: " + System.getProperty("spring.profiles.active", "default"));
+        System.out.println("🔌 Server Port: " + System.getenv("PORT"));
 
-        for(Pipeline pipeline : data) {
-            System.out.println(pipeline);
+        try {
+            ArrayList<Pipeline> data = (ArrayList<Pipeline>) pipelineService.getAllPipelines();
+            System.out.println("📋 Found " + data.size() + " existing pipelines");
+
+            for(Pipeline pipeline : data) {
+                System.out.println("  ▸ " + pipeline.getName() + " - " + pipeline.getStatus());
+            }
+        } catch (Exception e) {
+            System.out.println("⚠️  Could not load pipelines (database might be initializing): " + e.getMessage());
         }
 
-        System.out.println("Pipeline demo complete! App now ready for web requests.");
+        System.out.println("✅ StreamCI ready for webhook requests!");
     }
 }
