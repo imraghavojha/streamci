@@ -241,4 +241,28 @@ public class GitHubService {
     private Long calculateDurationLong(WorkflowRun run) {
         return (long) calculateDuration(run);
     }
+
+
+    public boolean testConnectionWithToken(String token) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", "token " + token);
+            headers.set("Accept", "application/vnd.github.v3+json");
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            ResponseEntity<String> response = restTemplate.exchange(
+                    "https://api.github.com/user",
+                    HttpMethod.GET,
+                    entity,
+                    String.class
+            );
+
+            logger.info("github api test with provided token: {}", response.getStatusCode());
+            return response.getStatusCode().is2xxSuccessful();
+
+        } catch (Exception e) {
+            logger.error("failed to test github token: {}", e.getMessage());
+            return false;
+        }
+    }
 }
