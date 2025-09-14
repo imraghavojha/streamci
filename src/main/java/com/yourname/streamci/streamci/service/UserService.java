@@ -82,4 +82,8 @@ public class UserService {
         byte[] decodedValue = Base64.getDecoder().decode(encryptedToken);
         return new String(cipher.doFinal(decodedValue));
     }
+
+    public User saveUser(User user) {
+        return userRepository.save(user);
+    }
 }

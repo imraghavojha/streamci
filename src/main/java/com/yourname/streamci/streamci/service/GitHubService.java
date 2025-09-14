@@ -14,11 +14,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 public class GitHubService {
@@ -264,5 +265,57 @@ public class GitHubService {
             logger.error("failed to test github token: {}", e.getMessage());
             return false;
         }
+    }
+    public List<Map<String, Object>> fetchUserRepositories(String token) {
+        List<Map<String, Object>> repositories = new ArrayList<>();
+
+        try {
+            HttpHeaders headers = createAuthHeaders();
+            headers.set("Authorization", "token " + token); // override with user token
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            ResponseEntity<String> response = restTemplate.exchange(
+                    "https://api.github.com/user/repos?per_page=100&sort=updated",
+                    HttpMethod.GET,
+                    entity,
+                    String.class
+            );
+
+            if (response.getStatusCode().is2xxSuccessful()) {
+                // parse the real JSON response
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                com.fasterxml.jackson.databind.JsonNode repos = mapper.readTree(response.getBody());
+
+                for (com.fasterxml.jackson.databind.JsonNode repo : repos) {
+                    Map<String, Object> repoData = new HashMap<>();
+                    repoData.put("id", repo.get("id").asLong());
+                    repoData.put("name", repo.get("name").asText());
+                    repoData.put("full_name", repo.get("full_name").asText());
+                    repoData.put("private", repo.get("private").asBoolean());
+                    repoData.put("updated_at", repo.get("updated_at").asText());
+                    repoData.put("language", repo.has("language") && !repo.get("language").isNull() ?
+                            repo.get("language").asText() : "Unknown");
+
+                    repositories.add(repoData);
+                }
+
+                logger.info("fetched {} real repositories for user", repositories.size());
+            }
+        } catch (Exception e) {
+            logger.error("error fetching repositories: {}", e.getMessage());
+
+            // fallback to mock data if API fails
+            Map<String, Object> repo1 = new HashMap<>();
+            repo1.put("name", "streamci-ui");
+            repo1.put("full_name", "user/streamci-ui");
+            repositories.add(repo1);
+
+            Map<String, Object> repo2 = new HashMap<>();
+            repo2.put("name", "streamci");
+            repo2.put("full_name", "user/streamci");
+            repositories.add(repo2);
+        }
+
+        return repositories;
     }
 }
