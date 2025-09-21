@@ -1,7 +1,6 @@
 package com.yourname.streamci.streamci.service;
 
-import com.yourname.streamci.streamci.model.Build;
-import com.yourname.streamci.streamci.model.Pipeline;
+import com.yourname.streamci.streamci.service.DashboardWebSocketService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,243 +12,182 @@ import org.slf4j.LoggerFactory;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.time.LocalDateTime;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
 public class WebhookService {
 
     private static final Logger logger = LoggerFactory.getLogger(WebhookService.class);
-    private final PipelineService pipelineService;
-    private final BuildService buildService;
-    private final QueueService queueService;
+    private final DashboardWebSocketService webSocketService;
     private final ObjectMapper objectMapper;
-    private final EventCounter eventCounter;
 
     @Value("${github.webhook.secret:default-secret}")
     private String webhookSecret;
 
-    public WebhookService(PipelineService pipelineService,
-                          BuildService buildService,
-                          QueueService queueService, EventCounter eventCounter) {
-        this.pipelineService = pipelineService;
-        this.buildService = buildService;
-        this.queueService = queueService;
-        this.eventCounter = eventCounter;
+    public WebhookService(DashboardWebSocketService webSocketService) {
+        this.webSocketService = webSocketService;
         this.objectMapper = new ObjectMapper();
     }
 
     public boolean verifySignature(String payload, String signature) {
-        // skip verification if no secret is configured or in test mode
-        if (webhookSecret.equals("default-secret") || webhookSecret.isEmpty()) {
-            logger.warn("Webhook signature verification disabled (no secret configured)");
+        if (webhookSecret.equals("default-secret") || signature == null) {
+            logger.warn("webhook signature verification disabled");
             return true;
-        }
-
-        // allow test requests without signature in development
-        if (signature == null) {
-            logger.warn("No signature provided - rejecting in production mode");
-            return false;
-        }
-
-        if (!signature.startsWith("sha256=")) {
-            return false;
         }
 
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             SecretKeySpec secretKey = new SecretKeySpec(webhookSecret.getBytes(), "HmacSHA256");
             mac.init(secretKey);
+
             byte[] hash = mac.doFinal(payload.getBytes());
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hash) {
+                sb.append(String.format("%02x", b));
+            }
 
-            String computed = "sha256=" + bytesToHex(hash);
-            return computed.equals(signature);
-
+            String expected = "sha256=" + sb.toString();
+            return expected.equals(signature);
         } catch (Exception e) {
-            logger.error("Error verifying signature: {}", e.getMessage());
+            logger.error("signature verification failed: {}", e.getMessage());
             return false;
         }
     }
 
     @Async
     public void processWebhookAsync(String eventType, String payload) {
-        logger.info("Processing webhook event: {}", eventType);
+        try {
+            logger.info("processing github webhook: {}", eventType);
 
-        // count every webhook event processed
-        eventCounter.incrementEvents();
+            if ("workflow_run".equals(eventType)) {
+                processWorkflowRunEvent(payload);
+            } else if ("push".equals(eventType)) {
+                processPushEvent(payload);
+            } else {
+                logger.debug("ignoring event type: {}", eventType);
+            }
 
-        // only process workflow_run events
-        if (!"workflow_run".equals(eventType)) {
-            logger.info("Ignoring non-workflow_run event: {}", eventType);
-            return;
+        } catch (Exception e) {
+            logger.error("webhook processing failed: {}", e.getMessage(), e);
         }
+    }
 
+    private void processWorkflowRunEvent(String payload) {
         try {
             JsonNode root = objectMapper.readTree(payload);
-            JsonNode workflowRun = root.path("workflow_run");
+            JsonNode workflowRun = root.get("workflow_run");
 
-            if (workflowRun.isMissingNode()) {
-                logger.warn("No workflow_run data in payload");
+            if (workflowRun == null) {
+                logger.warn("no workflow_run found in payload");
                 return;
             }
 
-            // extract repository info
-            String repoName = root.path("repository").path("name").asText();
+            String action = root.get("action").asText();
+            String status = workflowRun.get("status").asText();
+            String conclusion = workflowRun.has("conclusion") && !workflowRun.get("conclusion").isNull()
+                    ? workflowRun.get("conclusion").asText() : null;
 
-            // find or create pipeline
-            Pipeline pipeline = findOrCreatePipeline(repoName);
+            Map<String, Object> buildData = createBuildData(workflowRun, action);
 
-            // extract workflow info
-            String workflowId = workflowRun.path("id").asText();
-            String status = workflowRun.path("status").asText("unknown");
-            String conclusion = workflowRun.path("conclusion").asText();
+            logger.info("workflow {} - status: {}, conclusion: {}",
+                    workflowRun.get("id").asLong(), status, conclusion);
 
-            logger.info("processing workflow {} with status: {} conclusion: {}",
-                    workflowId, status, conclusion);
-
-            // track queue status based on workflow status
-            if ("queued".equals(status) || "waiting".equals(status) || "pending".equals(status)) {
-                // build is queued
-                logger.info("tracking queued build: {}", workflowId);
-                queueService.trackBuildQueued(workflowId, pipeline.getId());
-
+            if ("completed".equals(action)) {
+                broadcastBuildCompleted(buildData, conclusion);
             } else if ("in_progress".equals(status)) {
-                // build started running
-                logger.info("tracking build started: {}", workflowId);
-                queueService.trackBuildStarted(workflowId);
-
-            } else if ("completed".equals(status)) {
-                // build completed
-                logger.info("tracking build completed: {}", workflowId);
-                queueService.trackBuildCompleted(workflowId);
-
-                // also create the build record as before
-                Build build = extractBuildFromWebhook(workflowRun, pipeline);
-                Build savedBuild = buildService.saveBuild(build);
-                logger.info("created build {} for pipeline {}", savedBuild.getBuildId(), pipeline.getName());
-
-                updatePipelineStatus(pipeline, build);
+                broadcastBuildStarted(buildData);
+            } else if ("queued".equals(status)) {
+                broadcastBuildQueued(buildData);
             }
 
         } catch (Exception e) {
-            logger.error("error processing webhook: {}", e.getMessage(), e);
+            logger.error("failed to process workflow_run event: {}", e.getMessage(), e);
         }
     }
 
-    private Pipeline findOrCreatePipeline(String repoName) {
-        List<Pipeline> pipelines = pipelineService.getAllPipelines();
-
-        return pipelines.stream()
-                .filter(p -> p.getName().equals(repoName))
-                .findFirst()
-                .orElseGet(() -> {
-                    Pipeline newPipeline = Pipeline.builder()
-                            .name(repoName)
-                            .status("active")
-                            .duration(0)
-                            .build();
-                    return pipelineService.savePipeline(newPipeline);
-                });
-    }
-
-    private Build extractBuildFromWebhook(JsonNode workflowRun, Pipeline pipeline) {
-        String status = workflowRun.path("status").asText("unknown");
-        String conclusion = workflowRun.path("conclusion").asText();
-
-        // map github status to our status - use conclusion if available, otherwise status
-        String buildStatus = !conclusion.isEmpty() && !conclusion.equals("null") ? conclusion : status;
-
-        // parse timestamps correctly from ISO format with Z
-        LocalDateTime startTime = parseDateTime(workflowRun.path("run_started_at").asText());
-        if (startTime == null) {
-            startTime = parseDateTime(workflowRun.path("created_at").asText());
-        }
-        LocalDateTime endTime = parseDateTime(workflowRun.path("updated_at").asText());
-
-        // calculate duration in seconds
-        long duration = 0;
-        if (startTime != null && endTime != null) {
-            duration = java.time.Duration.between(startTime, endTime).getSeconds();
-        }
-
-        // extract commit info
-        String commitHash = workflowRun.path("head_sha").asText("unknown");
-        String branch = workflowRun.path("head_branch").asText("main");
-
-        // get actor info
-        String committer = workflowRun.path("actor").path("login").asText("unknown");
-
-        return Build.builder()
-                .pipeline(pipeline)
-                .status(mapStatus(buildStatus))
-                .startTime(startTime)
-                .endTime(endTime)
-                .duration(duration)
-                .commitHash(commitHash)
-                .committer(committer)
-                .branch(branch)
-                .build();
-    }
-
-    private void updatePipelineStatus(Pipeline pipeline, Build build) {
-        pipeline.setStatus(build.getStatus());
-
-        // update average duration
-        List<Build> allBuilds = buildService.getBuildsByPipelineId(pipeline.getId());
-        if (!allBuilds.isEmpty()) {
-            int avgDuration = (int) allBuilds.stream()
-                    .filter(b -> b.getDuration() != null)
-                    .mapToLong(Build::getDuration)
-                    .average()
-                    .orElse(0);
-            pipeline.setDuration(avgDuration);
-        }
-
-        pipelineService.updatePipeline(pipeline.getId(), pipeline);
-    }
-
-    private String mapStatus(String githubStatus) {
-        if (githubStatus == null) return "unknown";
-
-        return switch (githubStatus.toLowerCase()) {
-            case "success", "completed" -> "success";
-            case "failure", "failed" -> "failure";
-            case "cancelled", "canceled" -> "cancelled";
-            case "in_progress", "queued", "pending", "waiting", "requested" -> "running";
-            case "skipped" -> "skipped";
-            case "null", "" -> "unknown";
-            default -> {
-                logger.debug("Unknown GitHub status: {}", githubStatus);
-                yield "unknown";
-            }
-        };
-    }
-
-    private LocalDateTime parseDateTime(String dateTimeStr) {
-        if (dateTimeStr == null || dateTimeStr.isEmpty() || "null".equals(dateTimeStr)) {
-            return LocalDateTime.now();
-        }
-
+    private void processPushEvent(String payload) {
         try {
-            if (dateTimeStr.contains("Z") || dateTimeStr.contains("+")) {
-                java.time.Instant instant = java.time.Instant.parse(dateTimeStr);
-                return LocalDateTime.ofInstant(instant, java.time.ZoneId.systemDefault());
-            } else {
-                return LocalDateTime.parse(dateTimeStr, DateTimeFormatter.ISO_DATE_TIME);
-            }
+            JsonNode root = objectMapper.readTree(payload);
+            JsonNode repository = root.get("repository");
+
+            if (repository == null) return;
+
+            String repoName = repository.get("full_name").asText();
+            String branch = root.get("ref").asText().replace("refs/heads/", "");
+
+            Map<String, Object> pushData = new HashMap<>();
+            pushData.put("repository", repoName);
+            pushData.put("branch", branch);
+            pushData.put("commits", root.get("commits").size());
+            pushData.put("pusher", root.get("pusher").get("name").asText());
+
+            logger.info("push event: {} commits to {}/{}",
+                    pushData.get("commits"), repoName, branch);
+
+            webSocketService.broadcastDashboardUpdate("push_received", pushData);
+
         } catch (Exception e) {
-            logger.warn("Failed to parse datetime: {}", dateTimeStr);
-            return LocalDateTime.now();
+            logger.error("failed to process push event: {}", e.getMessage(), e);
         }
     }
 
-    private String bytesToHex(byte[] bytes) {
-        StringBuilder result = new StringBuilder();
-        for (byte b : bytes) {
-            result.append(String.format("%02x", b));
+    private Map<String, Object> createBuildData(JsonNode workflowRun, String action) {
+        Map<String, Object> buildData = new HashMap<>();
+
+        buildData.put("workflow_id", workflowRun.get("id").asLong());
+        buildData.put("workflow_name", workflowRun.get("name").asText());
+        buildData.put("status", workflowRun.get("status").asText());
+        buildData.put("repository", workflowRun.get("repository").get("full_name").asText());
+        buildData.put("branch", workflowRun.get("head_branch").asText());
+        buildData.put("commit_sha", workflowRun.get("head_sha").asText().substring(0, 7));
+        buildData.put("run_number", workflowRun.get("run_number").asInt());
+        buildData.put("created_at", workflowRun.get("created_at").asText());
+        buildData.put("updated_at", workflowRun.get("updated_at").asText());
+        buildData.put("html_url", workflowRun.get("html_url").asText());
+        buildData.put("action", action);
+
+        if (workflowRun.has("conclusion") && !workflowRun.get("conclusion").isNull()) {
+            buildData.put("conclusion", workflowRun.get("conclusion").asText());
         }
-        return result.toString();
+
+        return buildData;
+    }
+
+    private void broadcastBuildCompleted(Map<String, Object> buildData, String conclusion) {
+        buildData.put("event_type", "build_completed");
+        buildData.put("timestamp", LocalDateTime.now());
+
+        logger.info("broadcasting build completed: {} - {}",
+                buildData.get("workflow_name"), conclusion);
+
+        webSocketService.broadcastDashboardUpdate("build_completed", buildData);
+
+        if ("failure".equals(conclusion)) {
+            Map<String, Object> alertData = new HashMap<>();
+            alertData.put("type", "build_failure");
+            alertData.put("severity", "error");
+            alertData.put("workflow", buildData.get("workflow_name"));
+            alertData.put("repository", buildData.get("repository"));
+            alertData.put("branch", buildData.get("branch"));
+
+            webSocketService.broadcastDashboardUpdate("alert", alertData);
+        }
+    }
+
+    private void broadcastBuildStarted(Map<String, Object> buildData) {
+        buildData.put("event_type", "build_started");
+        buildData.put("timestamp", LocalDateTime.now());
+
+        logger.info("broadcasting build started: {}", buildData.get("workflow_name"));
+        webSocketService.broadcastDashboardUpdate("build_started", buildData);
+    }
+
+    private void broadcastBuildQueued(Map<String, Object> buildData) {
+        buildData.put("event_type", "build_queued");
+        buildData.put("timestamp", LocalDateTime.now());
+
+        logger.info("broadcasting build queued: {}", buildData.get("workflow_name"));
+        webSocketService.broadcastDashboardUpdate("build_queued", buildData);
     }
 }
