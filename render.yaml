@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: streamci-backend
+    env: java
+    buildCommand: ./mvnw clean package -DskipTests
+    startCommand: java -jar target/streamci.jar
+    plan: free
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: DATABASE_URL
+        fromDatabase:
+          name: streamci-db
+          property: connectionString
+      - key: DATABASE_USERNAME
+        fromDatabase:
+          name: streamci-db
+          property: user
+      - key: DATABASE_PASSWORD
+        fromDatabase:
+          name: streamci-db
+          property: password
+      - key: FRONTEND_URL
+        value: https://your-app.vercel.app
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_WEBHOOK_SECRET
+        sync: false
+    healthCheckPath: /health
+
+databases:
+  - name: streamci-db
+    databaseName: streamci
+    user: streamci_user
+    plan: free

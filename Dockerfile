@@ -23,5 +23,5 @@ RUN ./mvnw clean package -DskipTests
 # expose port
 EXPOSE 8080
 
-# run the jar file
-CMD ["java", "-jar", "target/streamci-0.0.1-SNAPSHOT.jar"]
+# run the jar file with production profile
+CMD ["java", "-Dspring.profiles.active=prod", "-jar", "target/streamci.jar"]
