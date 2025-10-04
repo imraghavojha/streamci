@@ -25,18 +25,18 @@ public class WebMvcConfig implements WebMvcConfigurer {
         if (isTestProfile) {
             // For tests: Allow all origins but no credentials to avoid conflicts
             registry.addMapping("/api/**")
-                    .allowedOriginPatterns("*")  // Use patterns instead of origins
+                    .allowedOriginPatterns("*")
                     .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                     .allowedHeaders("*")
-                    .allowCredentials(false)  // No credentials in tests
+                    .allowCredentials(false)
                     .maxAge(3600);
         } else {
-            // For production: Specific origins with credentials
-            registry.addMapping("/api/**")
-                    .allowedOrigins(allowedOrigins.split(","))
+            // For production AND development: Use origin patterns for flexibility
+            registry.addMapping("/**")  // Cover ALL endpoints, not just /api/**
+                    .allowedOriginPatterns(allowedOrigins.split(","))
                     .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                     .allowedHeaders("*")
-                    .allowCredentials(true)
+                    .allowCredentials(false)  // Must be false when using patterns
                     .exposedHeaders("Access-Control-Allow-Origin")
                     .maxAge(3600);
         }
