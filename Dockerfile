@@ -20,8 +20,6 @@ COPY src src
 # build the app
 RUN ./mvnw clean package -DskipTests
 
-# expose port
-EXPOSE 8080
-
-# run the jar file with production profile
-CMD ["java", "-Dspring.profiles.active=prod", "-jar", "target/streamci.jar"]
+# Spring Boot reads server.port=${PORT:8080} from application-prod.properties
+# This CMD explicitly passes it as system property for extra safety
+CMD sh -c "java -Dspring.profiles.active=prod -Dserver.port=${PORT:-8080} -jar target/streamci.jar"

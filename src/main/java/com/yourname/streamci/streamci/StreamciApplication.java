@@ -54,18 +54,5 @@ public class StreamciApplication implements CommandLineRunner {
         System.out.println("📊 Railway Profile Env: " + System.getenv("SPRING_PROFILES_ACTIVE"));
         System.out.println("🔌 Server Port: " + System.getenv("PORT"));
 
-        try {
-            ArrayList<Pipeline> data = (ArrayList<Pipeline>) pipelineService.getAllPipelines();
-            System.out.println("📋 Found " + data.size() + " existing pipelines");
-
-            for(Pipeline pipeline : data) {
-                System.out.println("  ▸ " + pipeline.getName() + " - " + pipeline.getStatus());
-            }
-        } catch (Exception e) {
-            System.out.println("⚠️  Database connection failed: " + e.getMessage());
-            e.printStackTrace(); // Add full stack trace for debugging
-        }
-
         System.out.println("✅ StreamCI ready for webhook requests!");
-    }
-}
+}}
