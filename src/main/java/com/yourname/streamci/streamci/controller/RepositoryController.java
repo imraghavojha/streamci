@@ -15,7 +15,6 @@ import java.util.ArrayList;
 
 @RestController
 @RequestMapping("/api/repositories")
-@CrossOrigin(origins = "http://localhost:3000")
 public class RepositoryController {
 
     private static final Logger logger = LoggerFactory.getLogger(RepositoryController.class);

@@ -12,7 +12,6 @@ import java.util.HashMap;
 
 @RestController
 @RequestMapping("/api/setup")
-@CrossOrigin(origins = "http://localhost:3000", allowCredentials = "false")
 public class SetupController {
 
     private static final Logger logger = LoggerFactory.getLogger(SetupController.class);

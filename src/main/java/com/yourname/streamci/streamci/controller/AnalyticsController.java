@@ -8,7 +8,6 @@ import java.util.*;
 
 @RestController
 @RequestMapping("/api/analytics")
-@CrossOrigin(origins = "http://localhost:3000", allowCredentials = "false") // fix: specific origin
 public class AnalyticsController {
 
     private final AnalyticsService analyticsService;

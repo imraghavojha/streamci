@@ -19,7 +19,6 @@ import java.util.DoubleSummaryStatistics;
 
 @RestController
 @RequestMapping("/api/trends")
-@CrossOrigin(origins = "*")
 public class TrendsController {
 
     private static final Logger logger = LoggerFactory.getLogger(TrendsController.class);

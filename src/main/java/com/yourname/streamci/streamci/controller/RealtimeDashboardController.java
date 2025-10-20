@@ -7,7 +7,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/realtime")
-@CrossOrigin(origins = "http://localhost:3000", allowCredentials = "false")
 public class RealtimeDashboardController {
 
     private final GitHubFetchService gitHubFetchService;
