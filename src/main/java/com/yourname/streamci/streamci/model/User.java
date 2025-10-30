@@ -33,6 +33,9 @@ public class User {
     @Column(columnDefinition = "TEXT")
     private String selectedRepos; // json array as string
 
+    @Column(length = 100)
+    private String webhookSecret; // user-specific webhook secret for GitHub verification
+
     @Builder.Default
     private Boolean tokenValidated = false;
 

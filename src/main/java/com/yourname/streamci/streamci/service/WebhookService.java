@@ -1,6 +1,6 @@
 package com.yourname.streamci.streamci.service;
 
-import com.yourname.streamci.streamci.service.DashboardWebSocketService;
+import com.yourname.streamci.streamci.model.User;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,13 +20,15 @@ public class WebhookService {
 
     private static final Logger logger = LoggerFactory.getLogger(WebhookService.class);
     private final DashboardWebSocketService webSocketService;
+    private final UserService userService;
     private final ObjectMapper objectMapper;
 
     @Value("${github.webhook.secret:default-secret}")
     private String webhookSecret;
 
-    public WebhookService(DashboardWebSocketService webSocketService) {
+    public WebhookService(DashboardWebSocketService webSocketService, UserService userService) {
         this.webSocketService = webSocketService;
+        this.userService = userService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -36,9 +38,34 @@ public class WebhookService {
             return true;
         }
 
+        return verifySignatureWithSecret(payload, signature, webhookSecret);
+    }
+
+    public boolean verifySignatureForUser(String payload, String signature, String clerkUserId) {
+        try {
+            User user = userService.findByClerkUserId(clerkUserId).orElse(null);
+
+            if (user == null || user.getWebhookSecret() == null) {
+                logger.warn("no webhook secret found for user: {}", clerkUserId);
+                return false;
+            }
+
+            return verifySignatureWithSecret(payload, signature, user.getWebhookSecret());
+        } catch (Exception e) {
+            logger.error("error verifying signature for user {}: {}", clerkUserId, e.getMessage());
+            return false;
+        }
+    }
+
+    private boolean verifySignatureWithSecret(String payload, String signature, String secret) {
+        if (signature == null) {
+            logger.warn("no signature provided");
+            return false;
+        }
+
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
-            SecretKeySpec secretKey = new SecretKeySpec(webhookSecret.getBytes(), "HmacSHA256");
+            SecretKeySpec secretKey = new SecretKeySpec(secret.getBytes(), "HmacSHA256");
             mac.init(secretKey);
 
             byte[] hash = mac.doFinal(payload.getBytes());
@@ -48,7 +75,13 @@ public class WebhookService {
             }
 
             String expected = "sha256=" + sb.toString();
-            return expected.equals(signature);
+            boolean valid = expected.equals(signature);
+
+            if (!valid) {
+                logger.warn("signature mismatch - expected: {}, received: {}", expected, signature);
+            }
+
+            return valid;
         } catch (Exception e) {
             logger.error("signature verification failed: {}", e.getMessage());
             return false;
