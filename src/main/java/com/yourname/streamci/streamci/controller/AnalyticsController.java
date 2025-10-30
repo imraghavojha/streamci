@@ -2,6 +2,8 @@ package com.yourname.streamci.streamci.controller;
 
 import com.yourname.streamci.streamci.service.AnalyticsService;
 import com.yourname.streamci.streamci.service.GitHubFetchService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.*;
@@ -10,6 +12,7 @@ import java.util.*;
 @RequestMapping("/api/analytics")
 public class AnalyticsController {
 
+    private static final Logger logger = LoggerFactory.getLogger(AnalyticsController.class);
     private final AnalyticsService analyticsService;
     private final GitHubFetchService gitHubFetchService;
 
@@ -21,23 +24,21 @@ public class AnalyticsController {
     @GetMapping("/trends/{clerkUserId}")
     @SuppressWarnings("unchecked")
     public ResponseEntity<Map<String, Object>> getTrends(@PathVariable String clerkUserId) {
-        System.out.println("=== DEBUG: analytics request received for user: " + clerkUserId + " ===");
+        logger.debug("Analytics request received for user: {}", clerkUserId);
 
         try {
             Map<String, Object> realtimeData = gitHubFetchService.fetchDashboardData(clerkUserId);
-            System.out.println("=== DEBUG: data keys: " + (realtimeData != null ? realtimeData.keySet() : "null") + " ===");
 
             if (realtimeData == null || realtimeData.get("workflows") == null) {
-                System.out.println("=== DEBUG: returning empty trends ===");
+                logger.debug("No workflow data available for user: {}, returning empty trends", clerkUserId);
                 return ResponseEntity.ok(createEmptyTrends());
             }
 
             List<Map<String, Object>> workflows = (List<Map<String, Object>>) realtimeData.get("workflows");
-            System.out.println("=== DEBUG: workflow count: " + workflows.size() + " ===");
 
             // handle empty workflows gracefully
             if (workflows.isEmpty()) {
-                System.out.println("=== DEBUG: no workflows found, returning empty trends ===");
+                logger.debug("No workflows found for user: {}, returning empty trends", clerkUserId);
                 return ResponseEntity.ok(createEmptyTrends());
             }
 
@@ -48,12 +49,11 @@ public class AnalyticsController {
             trends.put("total_workflows_analyzed", workflows.size());
             trends.put("timestamp", new Date().toInstant().toString());
 
-            System.out.println("=== DEBUG: successfully created trends ===");
+            logger.debug("Successfully created trends for user: {}", clerkUserId);
             return ResponseEntity.ok(trends);
 
         } catch (Exception e) {
-            System.err.println("=== ERROR: " + e.getMessage() + " ===");
-            e.printStackTrace();
+            logger.error("Error fetching analytics trends for user: {}", clerkUserId, e);
             return ResponseEntity.ok(createEmptyTrends());
         }
     }
