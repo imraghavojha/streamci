@@ -2,7 +2,6 @@
 
 > **Real-time CI/CD pipeline analytics and predictive monitoring system**
 
-Stop firefighting CI/CD failures. Start predicting them.
 
 [![Java](https://img.shields.io/badge/Java-17-orange.svg)](https://www.oracle.com/java/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.4-brightgreen.svg)](https://spring.io/projects/spring-boot)
