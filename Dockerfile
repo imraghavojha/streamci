@@ -1,5 +1,5 @@
 # backend dockerfile for spring boot
-FROM eclipse-temurin:17-jdk-slim
+FROM eclipse-temurin:17
 
 # set working directory
 WORKDIR /app
