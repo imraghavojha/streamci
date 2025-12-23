@@ -1,50 +1,42 @@
 package com.yourname.streamci.streamci.service;
+
 import com.yourname.streamci.streamci.model.Pipeline;
 import com.yourname.streamci.streamci.repository.PipelineRepository;
-import java.util.List;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Optional;
 
 @Service
-public class PipelineService {
+public class PipelineService extends AbstractCrudService<Pipeline, Integer> {
 
-
-    PipelineRepository pipelineRepository;
-
-
-    public PipelineService(PipelineRepository  pipelineRepository){
-        this.pipelineRepository = pipelineRepository;
+    public PipelineService(PipelineRepository pipelineRepository) {
+        super(pipelineRepository);
     }
 
-    public List<Pipeline> getAllPipelines(){
-        return pipelineRepository.findAll();
+    // update method with pipeline-specific logic
+    public Optional<Pipeline> updatePipeline(Integer id, Pipeline updates) {
+        return update(id, existing -> {
+            existing.setName(updates.getName());
+            existing.setStatus(updates.getStatus());
+            existing.setDuration(updates.getDuration());
+        });
     }
 
-    public Optional<Pipeline> getPipelineById(Integer id){
-        return pipelineRepository.findById(id);
+    // convenience methods that delegate to parent
+    public List<Pipeline> getAllPipelines() {
+        return getAll();
     }
 
-    public Pipeline savePipeline(Pipeline pipeline){
-        return pipelineRepository.save(pipeline);
+    public Optional<Pipeline> getPipelineById(Integer id) {
+        return getById(id);
     }
 
-    public boolean deletePipeline(Integer id){
-        if (pipelineRepository.existsById(id)){
-            pipelineRepository.deleteById(id);
-            return true;
-        } else {
-            return false;
-        }
+    public Pipeline savePipeline(Pipeline pipeline) {
+        return save(pipeline);
     }
 
-    public Optional<Pipeline> updatePipeline(Integer id, Pipeline updates){
-        return pipelineRepository.findById(id)
-                .map(existing -> {
-                    existing.setName(updates.getName());
-                    existing.setStatus(updates.getStatus());
-                    existing.setDuration(updates.getDuration());
-                    return pipelineRepository.save(existing);
-                });
+    public boolean deletePipeline(Integer id) {
+        return delete(id);
     }
 }

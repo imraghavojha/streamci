@@ -22,4 +22,8 @@ public interface PipelineMetricsRepository extends JpaRepository<PipelineMetrics
             "AND pm.calculatedAt = (SELECT MAX(pm2.calculatedAt) FROM PipelineMetrics pm2 " +
             "WHERE pm2.pipeline.id = :pipelineId)")
     Optional<PipelineMetrics> findLatestByPipelineId(@Param("pipelineId") Integer pipelineId);
+
+    // performance optimization: query by date range instead of loading all
+    @Query("SELECT pm FROM PipelineMetrics pm WHERE pm.calculatedAt >= :startDate ORDER BY pm.calculatedAt ASC")
+    List<PipelineMetrics> findByCalculatedAtAfter(@Param("startDate") LocalDateTime startDate);
 }

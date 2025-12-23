@@ -53,4 +53,25 @@ public interface BuildRepository extends JpaRepository<Build, Long> {
             "AND b.branch IS NOT NULL " +
             "GROUP BY b.branch HAVING COUNT(b) >= 3")
     List<Object[]> findBranchSuccessRates(@Param("pipelineId") Integer pipelineId);
+
+    // performance optimization: query builds by date range instead of loading all
+    @Query("SELECT b FROM Build b WHERE b.startTime >= :startDate ORDER BY b.startTime DESC")
+    List<Build> findByStartTimeAfter(@Param("startDate") LocalDateTime startDate);
+
+    // performance optimization: query builds by date range for specific pipeline
+    @Query("SELECT b FROM Build b WHERE b.pipeline.id = :pipelineId " +
+            "AND b.startTime >= :startDate ORDER BY b.startTime DESC")
+    List<Build> findByPipelineIdAndStartTimeAfter(@Param("pipelineId") Integer pipelineId,
+                                                   @Param("startDate") LocalDateTime startDate);
+
+    // performance optimization: query builds by date range with status filter
+    @Query("SELECT b FROM Build b WHERE b.startTime >= :startDate " +
+            "AND b.status = :status ORDER BY b.startTime DESC")
+    List<Build> findByStartTimeAfterAndStatus(@Param("startDate") LocalDateTime startDate,
+                                               @Param("status") String status);
+
+    // performance optimization: count builds by status in date range
+    @Query("SELECT COUNT(b) FROM Build b WHERE b.startTime >= :startDate AND b.status = :status")
+    long countByStartTimeAfterAndStatus(@Param("startDate") LocalDateTime startDate,
+                                        @Param("status") String status);
 }

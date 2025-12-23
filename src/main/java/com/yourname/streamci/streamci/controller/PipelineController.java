@@ -1,7 +1,12 @@
 package com.yourname.streamci.streamci.controller;
 
+import com.yourname.streamci.streamci.dto.DtoMapper;
+import com.yourname.streamci.streamci.dto.request.CreatePipelineRequest;
+import com.yourname.streamci.streamci.dto.request.UpdatePipelineRequest;
+import com.yourname.streamci.streamci.dto.response.PipelineResponse;
 import com.yourname.streamci.streamci.model.Pipeline;
 import com.yourname.streamci.streamci.service.PipelineService;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
@@ -16,18 +21,21 @@ import java.util.Optional;
 public class PipelineController {
 
     private final PipelineService pipelineService;
+    private final DtoMapper dtoMapper;
     private static final Logger logger = LoggerFactory.getLogger(PipelineController.class);
 
-    public PipelineController(PipelineService pipelineService){
+    public PipelineController(PipelineService pipelineService, DtoMapper dtoMapper){
         this.pipelineService = pipelineService;
+        this.dtoMapper = dtoMapper;
     }
 
     @GetMapping("/api/pipelines/{id}")
-    public ResponseEntity<Pipeline> getPipeline(@PathVariable int id){
+    public ResponseEntity<PipelineResponse> getPipeline(@PathVariable int id){
         Optional<Pipeline> result = pipelineService.getPipelineById(id);
         if (result.isPresent()) {
             logger.info("Requested pipeline with ID: {}", id);
-            return ResponseEntity.ok(result.get());
+            PipelineResponse response = dtoMapper.toPipelineResponse(result.get());
+            return ResponseEntity.ok(response);
         } else {
             logger.warn("Pipeline not found for ID: {}", id);
             return ResponseEntity.notFound().build();
@@ -36,30 +44,37 @@ public class PipelineController {
     }
 
     @GetMapping("/api/pipelines")
-    public ResponseEntity<List<Pipeline>> printPipelines(){
+    public ResponseEntity<List<PipelineResponse>> printPipelines(){
         logger.info("Requested all pipelines");
-        return ResponseEntity.ok(pipelineService.getAllPipelines());
+        List<Pipeline> pipelines = pipelineService.getAllPipelines();
+        List<PipelineResponse> response = dtoMapper.toPipelineResponseList(pipelines);
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/api/pipelines")
-    public ResponseEntity<?> addPipeline(@RequestBody Pipeline pipeline){
-        if (pipeline.getName() == null || pipeline.getName().trim().isEmpty()) {
-            return ResponseEntity.badRequest().body("Pipeline name is required");
-        }
-        logger.info("Received POST request to create pipeline: {}", pipeline.getName());
+    public ResponseEntity<?> addPipeline(@Valid @RequestBody CreatePipelineRequest request){
+        // validation is now handled by @Valid annotation
+        logger.info("Received POST request to create pipeline: {}", request.getName());
+        Pipeline pipeline = dtoMapper.toPipeline(request);
         Pipeline savedPipeline = pipelineService.savePipeline(pipeline);
+        PipelineResponse response = dtoMapper.toPipelineResponse(savedPipeline);
         logger.info("Successfully created pipeline with ID: {}", savedPipeline.getId());
-        return ResponseEntity.status(HttpStatus.CREATED).body(savedPipeline);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PutMapping("/api/pipelines/{id}")
-    public ResponseEntity<Pipeline> updatePipeline(@PathVariable Integer id, @RequestBody Pipeline pipeline){
-        Optional<Pipeline> updatedPipeline = pipelineService.updatePipeline(id, pipeline);
-        if (updatedPipeline.isEmpty()){
+    public ResponseEntity<PipelineResponse> updatePipeline(@PathVariable Integer id,
+                                                          @Valid @RequestBody UpdatePipelineRequest request){
+        Optional<Pipeline> existingPipeline = pipelineService.getPipelineById(id);
+        if (existingPipeline.isEmpty()){
             return ResponseEntity.notFound().build();
-        } else {
-            return ResponseEntity.ok(updatedPipeline.get());
         }
+
+        Pipeline pipeline = existingPipeline.get();
+        dtoMapper.updatePipelineFromRequest(pipeline, request);
+        Pipeline updatedPipeline = pipelineService.savePipeline(pipeline);
+        PipelineResponse response = dtoMapper.toPipelineResponse(updatedPipeline);
+        return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/api/pipelines/{id}")

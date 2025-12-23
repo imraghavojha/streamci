@@ -351,12 +351,8 @@ public class TrendsController {
     }
 
     private List<Map<String, Object>> calculateSuccessRateByTimeRange(Integer pipelineId, LocalDateTime startDate) {
-        // Get builds in time range and group by hour/day
-        List<Build> builds = buildRepository.findAll().stream()
-                .filter(b -> Objects.equals(b.getPipeline().getId(), pipelineId))
-                .filter(b -> b.getStartTime() != null && b.getStartTime().isAfter(startDate))
-                .sorted(Comparator.comparing(Build::getStartTime))
-                .collect(Collectors.toList());
+        // performance optimization: query by pipeline and date range instead of loading all
+        List<Build> builds = buildRepository.findByPipelineIdAndStartTimeAfter(pipelineId, startDate);
 
         // Group by hour
         Map<String, List<Build>> buildsByHour = builds.stream()
@@ -386,9 +382,8 @@ public class TrendsController {
 
     private List<Map<String, Object>> calculateGlobalSuccessRateByTimeRange(LocalDateTime startDate) {
         // Get all builds across all pipelines
-        List<Build> allBuilds = buildRepository.findAll().stream()
-                .filter(b -> b.getStartTime() != null && b.getStartTime().isAfter(startDate))
-                .collect(Collectors.toList());
+        // performance optimization: query by date range instead of loading all
+        List<Build> allBuilds = buildRepository.findByStartTimeAfter(startDate);
 
         // Group by hour
         Map<String, List<Build>> buildsByHour = allBuilds.stream()
@@ -417,11 +412,16 @@ public class TrendsController {
     }
 
     private List<Map<String, Object>> calculateDurationTrends(Integer pipelineId, LocalDateTime startDate) {
-        List<Build> builds = buildRepository.findAll().stream()
-                .filter(b -> pipelineId == null || Objects.equals(b.getPipeline().getId(), pipelineId))
-                .filter(b -> b.getStartTime() != null && b.getStartTime().isAfter(startDate))
+        // performance optimization: query by date range instead of loading all
+        List<Build> builds;
+        if (pipelineId != null) {
+            builds = buildRepository.findByPipelineIdAndStartTimeAfter(pipelineId, startDate);
+        } else {
+            builds = buildRepository.findByStartTimeAfter(startDate);
+        }
+        // filter out builds without duration
+        builds = builds.stream()
                 .filter(b -> b.getDuration() != null)
-                .sorted(Comparator.comparing(Build::getStartTime))
                 .collect(Collectors.toList());
 
         // Group by day for duration trends
@@ -451,11 +451,13 @@ public class TrendsController {
     }
 
     private List<Map<String, Object>> calculateBuildFrequency(Integer pipelineId, LocalDateTime startDate) {
-        List<Build> builds = buildRepository.findAll().stream()
-                .filter(b -> pipelineId == null || Objects.equals(b.getPipeline().getId(), pipelineId))
-                .filter(b -> b.getStartTime() != null && b.getStartTime().isAfter(startDate))
-                .sorted(Comparator.comparing(Build::getStartTime))
-                .collect(Collectors.toList());
+        // performance optimization: query by date range instead of loading all
+        List<Build> builds;
+        if (pipelineId != null) {
+            builds = buildRepository.findByPipelineIdAndStartTimeAfter(pipelineId, startDate);
+        } else {
+            builds = buildRepository.findByStartTimeAfter(startDate);
+        }
 
         // Group by day
         Map<String, Long> buildCountByDay = builds.stream()
@@ -476,10 +478,16 @@ public class TrendsController {
     }
 
     private List<Map<String, Object>> calculateQueueTrends(Integer pipelineId, LocalDateTime startDate) {
-        List<QueueMetrics> queueMetrics = queueMetricsRepository.findAll().stream()
-                .filter(q -> pipelineId == null || Objects.equals(q.getPipeline().getId(), pipelineId))
-                .filter(q -> q.getTimestamp().isAfter(startDate))
-                .sorted(Comparator.comparing(QueueMetrics::getTimestamp))
+        // performance optimization: query by date range instead of loading all
+        List<QueueMetrics> queueMetrics;
+        if (pipelineId != null) {
+            queueMetrics = queueMetricsRepository.findByPipelineIdAndTimestampBetweenOrderByTimestampAsc(
+                    pipelineId, startDate, LocalDateTime.now());
+        } else {
+            queueMetrics = queueMetricsRepository.findByTimestampAfter(startDate);
+        }
+
+        queueMetrics = queueMetrics.stream()
                 .collect(Collectors.toList());
 
         return queueMetrics.stream()

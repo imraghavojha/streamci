@@ -22,4 +22,11 @@ public interface QueueTrackerRepository extends JpaRepository<QueueTracker, Long
             "WHERE q.pipeline.id = :pipelineId AND q.completedAt > :since")
     Double getAverageWaitTime(@Param("pipelineId") Integer pipelineId,
                               @Param("since") LocalDateTime since);
+
+    // performance optimization: query by status instead of loading all and filtering
+    List<QueueTracker> findByStatus(String status);
+
+    // performance optimization: count active builds globally
+    @Query("SELECT COUNT(q) FROM QueueTracker q WHERE q.status IN ('queued', 'running')")
+    long countAllActive();
 }

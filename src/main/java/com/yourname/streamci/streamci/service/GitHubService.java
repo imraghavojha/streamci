@@ -59,7 +59,7 @@ public class GitHubService {
         }
     }
 
-    public GitHubRepo fetchRepositoryInfo(String owner, String repo) {
+    public Optional<GitHubRepo> fetchRepositoryInfo(String owner, String repo) {
         try {
             HttpHeaders headers = createAuthHeaders();
             HttpEntity<String> entity = new HttpEntity<>(headers);
@@ -73,12 +73,12 @@ public class GitHubService {
                     GitHubRepo.class
             ).getBody();
 
-            logger.info("Successfully fetched repo info for {}/{}", owner, repo);
-            return repoInfo;
+            logger.info("successfully fetched repo info for {}/{}", owner, repo);
+            return Optional.ofNullable(repoInfo);
 
         } catch (RestClientException e) {
-            logger.error("Failed to fetch repository {}/{}: {}", owner, repo, e.getMessage());
-            return null;
+            logger.error("failed to fetch repository {}/{}: {}", owner, repo, e.getMessage());
+            return Optional.empty();
         }
     }
 
@@ -116,16 +116,17 @@ public class GitHubService {
 
     @Transactional
     public SyncResult syncRepository(String owner, String repo) {
-        logger.info("Starting sync for repository {}/{}", owner, repo);
+        logger.info("starting sync for repository {}/{}", owner, repo);
 
-        GitHubRepo repoInfo = fetchRepositoryInfo(owner, repo);
-        if (repoInfo == null) {
-            return new SyncResult(false, "Repository not found or inaccessible", 0, 0);
+        Optional<GitHubRepo> repoInfoOpt = fetchRepositoryInfo(owner, repo);
+        if (repoInfoOpt.isEmpty()) {
+            return new SyncResult(false, "repository not found or inaccessible", 0, 0);
         }
 
+        GitHubRepo repoInfo = repoInfoOpt.get();
         List<WorkflowRun> workflowRuns = fetchWorkflowRuns(owner, repo);
         if (workflowRuns.isEmpty()) {
-            logger.warn("No workflow runs found for {}/{}", owner, repo);
+            logger.warn("no workflow runs found for {}/{}", owner, repo);
         }
 
         Pipeline pipeline = mapToPipeline(repoInfo, workflowRuns);
@@ -134,8 +135,8 @@ public class GitHubService {
         List<Build> builds = mapToBuilds(workflowRuns, savedPipeline);
         int savedBuildsCount = saveBuilds(builds);
 
-        logger.info("Sync completed for {}/{}: 1 pipeline, {} builds", owner, repo, savedBuildsCount);
-        return new SyncResult(true, "Sync successful", 1, savedBuildsCount);
+        logger.info("sync completed for {}/{}: 1 pipeline, {} builds", owner, repo, savedBuildsCount);
+        return new SyncResult(true, "sync successful", 1, savedBuildsCount);
     }
 
     private HttpHeaders createAuthHeaders() {

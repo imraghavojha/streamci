@@ -1,8 +1,15 @@
 package com.yourname.streamci.streamci.controller;
 
 
+import com.yourname.streamci.streamci.dto.DtoMapper;
+import com.yourname.streamci.streamci.dto.request.CreateBuildRequest;
+import com.yourname.streamci.streamci.dto.request.UpdateBuildRequest;
+import com.yourname.streamci.streamci.dto.response.BuildResponse;
 import com.yourname.streamci.streamci.model.Build;
+import com.yourname.streamci.streamci.model.Pipeline;
 import com.yourname.streamci.streamci.service.BuildService;
+import com.yourname.streamci.streamci.service.PipelineService;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,54 +21,75 @@ import java.util.Optional;
 public class BuildController {
 
     private final BuildService buildService;
+    private final PipelineService pipelineService;
+    private final DtoMapper dtoMapper;
 
-    public BuildController(BuildService buildService){
+    public BuildController(BuildService buildService,
+                          PipelineService pipelineService,
+                          DtoMapper dtoMapper){
         this.buildService = buildService;
+        this.pipelineService = pipelineService;
+        this.dtoMapper = dtoMapper;
     }
 
     @GetMapping("/api/builds")
-    public ResponseEntity<List<Build>> printBuilds(){
-        List<Build> result = buildService.getAllBuilds();
-        return ResponseEntity.ok(result);
+    public ResponseEntity<List<BuildResponse>> printBuilds(){
+        List<Build> builds = buildService.getAllBuilds();
+        List<BuildResponse> response = dtoMapper.toBuildResponseList(builds);
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/api/builds/{id}")
-    public ResponseEntity<Build> getBuild(@PathVariable Long id){
+    public ResponseEntity<BuildResponse> getBuild(@PathVariable Long id){
         Optional<Build> result = buildService.getBuildById(id);
         if (result.isPresent()){
-            return ResponseEntity.ok(result.get());
+            BuildResponse response = dtoMapper.toBuildResponse(result.get());
+            return ResponseEntity.ok(response);
         } else{
             return ResponseEntity.notFound().build();
         }
     }
 
     @GetMapping("/api/pipelines/{pipelineId}/builds")
-    public ResponseEntity<List<Build>> getBuildByPipelineId(@PathVariable Integer pipelineId){
-        List<Build> result = buildService.getBuildsByPipelineId(pipelineId);
-        if (result.isEmpty()){
+    public ResponseEntity<List<BuildResponse>> getBuildByPipelineId(@PathVariable Integer pipelineId){
+        List<Build> builds = buildService.getBuildsByPipelineId(pipelineId);
+        if (builds.isEmpty()){
             return ResponseEntity.notFound().build();
         } else{
-            return ResponseEntity.ok(result);
+            List<BuildResponse> response = dtoMapper.toBuildResponseList(builds);
+            return ResponseEntity.ok(response);
         }
     }
 
     @PostMapping("/api/builds")
-    public ResponseEntity<?> addBuild(@RequestBody Build build){
-        if (build.getStatus() == null || build.getStatus().trim().isEmpty()) {
-            return ResponseEntity.badRequest().body("Build status is required");
+    public ResponseEntity<?> addBuild(@Valid @RequestBody CreateBuildRequest request){
+        // validation is now handled by @Valid annotation
+
+        // lookup pipeline
+        Optional<Pipeline> pipeline = pipelineService.getPipelineById(request.getPipelineId());
+        if (pipeline.isEmpty()) {
+            return ResponseEntity.badRequest().body("Pipeline not found with id: " + request.getPipelineId());
         }
+
+        Build build = dtoMapper.toBuild(request, pipeline.get());
         Build savedBuild = buildService.saveBuild(build);
-        return ResponseEntity.status(HttpStatus.CREATED).body(savedBuild);
+        BuildResponse response = dtoMapper.toBuildResponse(savedBuild);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PutMapping("/api/builds/{buildId}")
-    public ResponseEntity<Build> updateBuild(@PathVariable Long buildId, @RequestBody Build build){
-        Optional<Build> updatedBuild = buildService.updateBuild(buildId, build);
-        if (updatedBuild.isEmpty()){
+    public ResponseEntity<BuildResponse> updateBuild(@PathVariable Long buildId,
+                                                     @Valid @RequestBody UpdateBuildRequest request){
+        Optional<Build> existingBuild = buildService.getBuildById(buildId);
+        if (existingBuild.isEmpty()){
             return ResponseEntity.notFound().build();
-        } else{
-            return ResponseEntity.ok(updatedBuild.get());
         }
+
+        Build build = existingBuild.get();
+        dtoMapper.updateBuildFromRequest(build, request);
+        Build updatedBuild = buildService.saveBuild(build);
+        BuildResponse response = dtoMapper.toBuildResponse(updatedBuild);
+        return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/api/builds/{buildId}")

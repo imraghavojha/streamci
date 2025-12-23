@@ -65,13 +65,9 @@ public class QueueController {
     // manually calculate queue metrics
     @PostMapping("/queue/{pipelineId}/calculate")
     public ResponseEntity<QueueMetrics> calculateQueue(@PathVariable Integer pipelineId) {
-        QueueMetrics metrics = queueService.calculateQueueMetrics(pipelineId);
-
-        if (metrics != null) {
-            return ResponseEntity.ok(metrics);
-        } else {
-            return ResponseEntity.notFound().build();
-        }
+        return queueService.calculateQueueMetrics(pipelineId)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
     // debug endpoint to check queue tracker

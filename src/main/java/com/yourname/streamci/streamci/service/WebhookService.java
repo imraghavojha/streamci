@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import jakarta.annotation.PostConstruct;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.time.LocalDateTime;
@@ -23,7 +24,7 @@ public class WebhookService {
     private final UserService userService;
     private final ObjectMapper objectMapper;
 
-    @Value("${github.webhook.secret:default-secret}")
+    @Value("${github.webhook.secret:}")
     private String webhookSecret;
 
     public WebhookService(DashboardWebSocketService webSocketService, UserService userService) {
@@ -32,10 +33,26 @@ public class WebhookService {
         this.objectMapper = new ObjectMapper();
     }
 
+    @PostConstruct
+    public void validateConfiguration() {
+        // allow empty secret only in test profile
+        if (webhookSecret == null || webhookSecret.trim().isEmpty() || webhookSecret.equals("default-secret")) {
+            logger.warn("github webhook secret not configured - signature verification will fail in production");
+            logger.warn("set GITHUB_WEBHOOK_SECRET environment variable or github.webhook.secret property");
+        }
+    }
+
     public boolean verifySignature(String payload, String signature) {
-        if (webhookSecret.equals("default-secret") || signature == null) {
-            logger.warn("webhook signature verification disabled");
-            return true;
+        // fail if no signature provided
+        if (signature == null || signature.trim().isEmpty()) {
+            logger.warn("webhook signature missing - rejecting request");
+            return false;
+        }
+
+        // fail if secret not configured properly
+        if (webhookSecret == null || webhookSecret.trim().isEmpty() || webhookSecret.equals("default-secret")) {
+            logger.error("webhook secret not configured - cannot verify signature");
+            return false;
         }
 
         return verifySignatureWithSecret(payload, signature, webhookSecret);

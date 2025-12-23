@@ -22,4 +22,8 @@ public interface QueueMetricsRepository extends JpaRepository<QueueMetrics, Long
             "WHERE q.pipeline.id = :pipelineId AND q.timestamp > :since")
     Double getAverageQueueDepth(@Param("pipelineId") Integer pipelineId,
                                 @Param("since") LocalDateTime since);
+
+    // performance optimization: query by date range instead of loading all
+    @Query("SELECT q FROM QueueMetrics q WHERE q.timestamp >= :startDate ORDER BY q.timestamp ASC")
+    List<QueueMetrics> findByTimestampAfter(@Param("startDate") LocalDateTime startDate);
 }

@@ -32,8 +32,11 @@ public class QueueScheduler {
 
             for (Pipeline pipeline : pipelines) {
                 try {
-                    queueService.calculateQueueMetrics(pipeline.getId());
-                    logger.debug("calculated queue metrics for pipeline {}", pipeline.getId());
+                    queueService.calculateQueueMetrics(pipeline.getId())
+                            .ifPresentOrElse(
+                                    metrics -> logger.debug("calculated queue metrics for pipeline {}", pipeline.getId()),
+                                    () -> logger.warn("could not calculate queue metrics for pipeline {}", pipeline.getId())
+                            );
                 } catch (Exception e) {
                     logger.error("failed to calculate queue for pipeline {}: {}",
                             pipeline.getId(), e.getMessage());

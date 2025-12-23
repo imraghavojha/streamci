@@ -34,4 +34,8 @@ public interface AlertRepository extends JpaRepository<Alert, Long> {
             Alert.AlertStatus status,
             LocalDateTime before
     );
+
+    // performance optimization: count alerts by date range instead of loading all
+    @Query("SELECT COUNT(a) FROM Alert a WHERE a.createdAt >= :startDate")
+    long countByCreatedAtAfter(@Param("startDate") LocalDateTime startDate);
 }

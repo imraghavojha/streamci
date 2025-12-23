@@ -4,7 +4,6 @@ import com.yourname.streamci.streamci.event.BuildCompletedEvent;
 import com.yourname.streamci.streamci.event.QueueStatusChangedEvent;
 import com.yourname.streamci.streamci.model.*;
 import com.yourname.streamci.streamci.repository.*;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,21 +17,21 @@ import java.util.stream.Collectors;
 @Service
 public class QueueService {
 
-    @Autowired
-    private ApplicationEventPublisher eventPublisher;
-
     private static final Logger logger = LoggerFactory.getLogger(QueueService.class);
 
     private final QueueTrackerRepository trackerRepository;
     private final QueueMetricsRepository metricsRepository;
     private final PipelineService pipelineService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public QueueService(QueueTrackerRepository trackerRepository,
                         QueueMetricsRepository metricsRepository,
-                        PipelineService pipelineService) {
+                        PipelineService pipelineService,
+                        ApplicationEventPublisher eventPublisher) {
         this.trackerRepository = trackerRepository;
         this.metricsRepository = metricsRepository;
         this.pipelineService = pipelineService;
+        this.eventPublisher = eventPublisher;
     }
 
     // called when build enters queue
@@ -141,11 +140,11 @@ public class QueueService {
 
     // calculate current queue metrics
     @Transactional
-    public QueueMetrics calculateQueueMetrics(Integer pipelineId) {
+    public Optional<QueueMetrics> calculateQueueMetrics(Integer pipelineId) {
         Optional<Pipeline> pipeline = pipelineService.getPipelineById(pipelineId);
         if (pipeline.isEmpty()) {
             logger.warn("pipeline {} not found", pipelineId);
-            return null;
+            return Optional.empty();
         }
 
         // get current queue state
@@ -189,7 +188,7 @@ public class QueueService {
         logger.info("saved queue metrics for pipeline {}: depth={}, running={}",
                 pipelineId, metrics.getCurrentQueueDepth(), metrics.getRunningBuilds());
 
-        return saved;
+        return Optional.of(saved);
     }
 
     // simple prediction using moving average and trend

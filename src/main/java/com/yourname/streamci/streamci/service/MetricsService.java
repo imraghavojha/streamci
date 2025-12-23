@@ -36,15 +36,10 @@ public class MetricsService {
 
     @Transactional
     public PipelineMetrics calculateMetricsForPipeline(Integer pipelineId) {
-        logger.info("Calculating metrics for pipeline {}", pipelineId);
+        logger.info("calculating metrics for pipeline {}", pipelineId);
 
-        Optional<Pipeline> pipelineOpt = pipelineService.getPipelineById(pipelineId);
-        if (pipelineOpt.isEmpty()) {
-            logger.warn("Pipeline {} not found", pipelineId);
-            return null;
-        }
-
-        Pipeline pipeline = pipelineOpt.get();
+        Pipeline pipeline = pipelineService.getPipelineById(pipelineId)
+                .orElseThrow(() -> new IllegalArgumentException("pipeline not found: " + pipelineId));
         List<Build> builds = buildService.getBuildsByPipelineId(pipelineId);
 
         if (builds.isEmpty()) {
