@@ -161,6 +161,142 @@ public class StreamCIEssentialApiIntegrationTest {
     }
 
     @Test
+    @Order(2)
+    void test2_webhookToDashboardFlowWorks() throws Exception {
+        System.out.println("\n=== TEST 2: Webhook to Dashboard Flow Works ===");
+
+        // Clear all tables
+        alertRepository.deleteAll();
+        buildRepository.deleteAll();
+        queueTrackerRepository.deleteAll();
+
+        // Step 1: Send workflow_run queued webhook
+        String queuedPayload = """
+            {
+                "action": "queued",
+                "workflow_run": {
+                    "id": "12345",
+                    "status": "queued",
+                    "created_at": "2024-01-15T10:00:00Z",
+                    "head_sha": "abc123def456",
+                    "head_branch": "main",
+                    "actor": {"login": "testuser"}
+                },
+                "repository": {
+                    "name": "webhook-test-repo",
+                    "owner": {"login": "testowner"}
+                }
+            }
+            """;
+        String signature1 = WebhookTestHelper.generateSignature(queuedPayload, WebhookTestHelper.TEST_SECRET);
+
+        mockMvc.perform(post("/api/webhooks/github")
+                        .header("X-GitHub-Event", "workflow_run")
+                        .header("X-Hub-Signature-256", signature1)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(queuedPayload))
+                .andExpect(status().isOk());
+
+        Thread.sleep(2000); // Wait for async processing
+
+        // Assert: Pipeline created and QueueTracker entry created
+        List<Pipeline> pipelines = pipelineRepository.findAll();
+        assertThat(pipelines).anyMatch(p -> p.getName().equals("webhook-test-repo"));
+
+        List<QueueTracker> queueEntries = queueTrackerRepository.findAll();
+        assertThat(queueEntries).hasSize(1);
+        assertThat(queueEntries.get(0).getStatus()).isEqualTo("queued");
+
+        // Step 2: Send workflow_run in_progress webhook
+        String inProgressPayload = """
+            {
+                "action": "in_progress",
+                "workflow_run": {
+                    "id": "12345",
+                    "status": "in_progress",
+                    "created_at": "2024-01-15T10:00:00Z",
+                    "run_started_at": "2024-01-15T10:01:00Z",
+                    "head_sha": "abc123def456",
+                    "head_branch": "main",
+                    "actor": {"login": "testuser"}
+                },
+                "repository": {
+                    "name": "webhook-test-repo",
+                    "owner": {"login": "testowner"}
+                }
+            }
+            """;
+        String signature2 = WebhookTestHelper.generateSignature(inProgressPayload, WebhookTestHelper.TEST_SECRET);
+
+        mockMvc.perform(post("/api/webhooks/github")
+                        .header("X-GitHub-Event", "workflow_run")
+                        .header("X-Hub-Signature-256", signature2)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(inProgressPayload))
+                .andExpect(status().isOk());
+
+        Thread.sleep(1000);
+
+        // Assert: QueueTracker updated to running
+        queueEntries = queueTrackerRepository.findAll();
+        assertThat(queueEntries.get(0).getStatus()).isEqualTo("running");
+
+        // Step 3: Send workflow_run completed webhook
+        String completedPayload = """
+            {
+                "action": "completed",
+                "workflow_run": {
+                    "id": "12345",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "created_at": "2024-01-15T10:00:00Z",
+                    "run_started_at": "2024-01-15T10:01:00Z",
+                    "updated_at": "2024-01-15T10:05:00Z",
+                    "head_sha": "abc123def456",
+                    "head_branch": "main",
+                    "actor": {"login": "testuser"}
+                },
+                "repository": {
+                    "name": "webhook-test-repo",
+                    "owner": {"login": "testowner"}
+                }
+            }
+            """;
+        String signature3 = WebhookTestHelper.generateSignature(completedPayload, WebhookTestHelper.TEST_SECRET);
+
+        mockMvc.perform(post("/api/webhooks/github")
+                        .header("X-GitHub-Event", "workflow_run")
+                        .header("X-Hub-Signature-256", signature3)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(completedPayload))
+                .andExpect(status().isOk());
+
+        Thread.sleep(2000);
+
+        // Assert: Build created with success status
+        List<Build> builds = buildRepository.findAll();
+        assertThat(builds).hasSize(1);
+        assertThat(builds.get(0).getStatus()).isEqualTo("success");
+
+        // Assert: QueueTracker updated to completed
+        queueEntries = queueTrackerRepository.findAll();
+        assertThat(queueEntries.get(0).getStatus()).isEqualTo("completed");
+
+        // Step 4: Call dashboard summary to verify data flow
+        MvcResult result = mockMvc.perform(get("/api/dashboard/summary"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        Map<String, Object> response = objectMapper.readValue(
+                result.getResponse().getContentAsString(), Map.class);
+        List<?> responsePipelines = (List<?>) response.get("pipelines");
+        assertThat(responsePipelines).anyMatch(p ->
+                ((Map<String, Object>) p).get("name").equals("webhook-test-repo"));
+
+        System.out.println("✅ Webhook to dashboard flow works end-to-end");
+    }
+
+    @Test
     @Order(3)
     void test3_trendsEndpointWithRealData() throws Exception {
         System.out.println("\n=== TEST 3: Trends Endpoint with Real Data ===");

@@ -9,6 +9,7 @@ import com.yourname.streamci.streamci.repository.BuildRepository;
 import com.yourname.streamci.streamci.repository.QueueTrackerRepository;
 import com.yourname.streamci.streamci.service.WebhookService;
 import com.yourname.streamci.streamci.service.PipelineService;
+import com.yourname.streamci.streamci.util.WebhookTestHelper;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -129,11 +130,12 @@ public class DiagnosticTest {
         System.out.println("\n=== STEP 3: TEST HTTP ENDPOINT ===");
 
         String payload = loadJsonFixture("workflow_run_success.json");
+        String signature = WebhookTestHelper.generateSignature(payload, WebhookTestHelper.TEST_SECRET);
 
         // Send HTTP request
         var result = mockMvc.perform(post("/api/webhooks/github")
                         .header("X-GitHub-Event", "workflow_run")
-                        .header("X-Hub-Signature-256", "test-signature")
+                        .header("X-Hub-Signature-256", signature)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
                 .andExpect(status().isOk())
