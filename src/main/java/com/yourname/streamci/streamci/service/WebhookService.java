@@ -1,6 +1,8 @@
 package com.yourname.streamci.streamci.service;
 
 import com.yourname.streamci.streamci.model.User;
+import com.yourname.streamci.streamci.model.Pipeline;
+import com.yourname.streamci.streamci.model.Build;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,8 +15,10 @@ import jakarta.annotation.PostConstruct;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class WebhookService {
@@ -22,14 +26,21 @@ public class WebhookService {
     private static final Logger logger = LoggerFactory.getLogger(WebhookService.class);
     private final DashboardWebSocketService webSocketService;
     private final UserService userService;
+    private final PipelineService pipelineService;
+    private final BuildService buildService;
     private final ObjectMapper objectMapper;
 
     @Value("${github.webhook.secret:}")
     private String webhookSecret;
 
-    public WebhookService(DashboardWebSocketService webSocketService, UserService userService) {
+    public WebhookService(DashboardWebSocketService webSocketService,
+                         UserService userService,
+                         PipelineService pipelineService,
+                         BuildService buildService) {
         this.webSocketService = webSocketService;
         this.userService = userService;
+        this.pipelineService = pipelineService;
+        this.buildService = buildService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -127,9 +138,10 @@ public class WebhookService {
         try {
             JsonNode root = objectMapper.readTree(payload);
             JsonNode workflowRun = root.get("workflow_run");
+            JsonNode repository = root.get("repository");
 
-            if (workflowRun == null) {
-                logger.warn("no workflow_run found in payload");
+            if (workflowRun == null || repository == null) {
+                logger.warn("no workflow_run or repository found in payload");
                 return;
             }
 
@@ -138,6 +150,10 @@ public class WebhookService {
             String conclusion = workflowRun.has("conclusion") && !workflowRun.get("conclusion").isNull()
                     ? workflowRun.get("conclusion").asText() : null;
 
+            // save to database
+            saveToDatabaseFromWebhook(workflowRun, repository, action, status, conclusion);
+
+            // broadcast to websocket (keep existing functionality)
             Map<String, Object> buildData = createBuildData(workflowRun, action);
 
             logger.info("workflow {} - status: {}, conclusion: {}",
@@ -154,6 +170,94 @@ public class WebhookService {
         } catch (Exception e) {
             logger.error("failed to process workflow_run event: {}", e.getMessage(), e);
         }
+    }
+
+    private void saveToDatabaseFromWebhook(JsonNode workflowRun, JsonNode repository,
+                                           String action, String status, String conclusion) {
+        try {
+            // get repository name
+            String repoName = repository.get("name").asText();
+
+            // find or create pipeline
+            Pipeline pipeline = pipelineService.getAllPipelines().stream()
+                    .filter(p -> repoName.equals(p.getName()))
+                    .findFirst()
+                    .orElseGet(() -> {
+                        Pipeline newPipeline = Pipeline.builder()
+                                .name(repoName)
+                                .status("active")
+                                .duration(0)
+                                .build();
+                        return pipelineService.savePipeline(newPipeline);
+                    });
+
+            // only save build if workflow is completed (has all data)
+            if ("completed".equals(action) && conclusion != null) {
+                // parse times
+                LocalDateTime startTime = parseGitHubDateTime(workflowRun.get("created_at"));
+                LocalDateTime endTime = parseGitHubDateTime(workflowRun.get("updated_at"));
+
+                // calculate duration
+                Long duration = null;
+                if (startTime != null && endTime != null) {
+                    duration = java.time.Duration.between(startTime, endTime).getSeconds();
+                }
+
+                // map conclusion to status
+                String buildStatus = mapConclusionToStatus(conclusion);
+
+                // extract commit info
+                String commitHash = workflowRun.has("head_sha") ?
+                        workflowRun.get("head_sha").asText() : "unknown";
+                String branch = workflowRun.has("head_branch") ?
+                        workflowRun.get("head_branch").asText() : "main";
+                String committer = workflowRun.has("actor") && workflowRun.get("actor").has("login") ?
+                        workflowRun.get("actor").get("login").asText() : "unknown";
+
+                // create and save build
+                Build build = Build.builder()
+                        .pipeline(pipeline)
+                        .status(buildStatus)
+                        .startTime(startTime)
+                        .endTime(endTime)
+                        .duration(duration)
+                        .commitHash(commitHash)
+                        .branch(branch)
+                        .committer(committer)
+                        .build();
+
+                buildService.saveBuild(build);
+                logger.info("saved build to database: pipeline={}, status={}, duration={}s",
+                        repoName, buildStatus, duration);
+            }
+
+        } catch (Exception e) {
+            logger.error("failed to save webhook data to database: {}", e.getMessage(), e);
+        }
+    }
+
+    private LocalDateTime parseGitHubDateTime(JsonNode dateNode) {
+        if (dateNode == null || dateNode.isNull()) {
+            return null;
+        }
+        try {
+            String dateStr = dateNode.asText();
+            return LocalDateTime.parse(dateStr, DateTimeFormatter.ISO_DATE_TIME);
+        } catch (Exception e) {
+            logger.warn("failed to parse date: {}", dateNode.asText());
+            return null;
+        }
+    }
+
+    private String mapConclusionToStatus(String conclusion) {
+        if (conclusion == null) return "unknown";
+        return switch (conclusion.toLowerCase()) {
+            case "success" -> "success";
+            case "failure" -> "failure";
+            case "cancelled" -> "cancelled";
+            case "skipped" -> "skipped";
+            default -> "unknown";
+        };
     }
 
     private void processPushEvent(String payload) {
