@@ -1,6 +1,6 @@
 # 🚀 StreamCI Backend
 
-> **Real-time CI/CD pipeline analytics and predictive monitoring system**
+> **Real-time CI/CD pipeline analytics**
 
 
 [![Java](https://img.shields.io/badge/Java-17-orange.svg)](https://www.oracle.com/java/)
@@ -11,51 +11,12 @@
 
 ---
 
-## 📖 Table of Contents
-
-- [Overview](#-overview)
-- [The Problem → Solution](#-the-problem--solution)
-- [Features](#-features)
-- [Architecture](#-architecture)
-- [Tech Stack](#-tech-stack)
-- [API Endpoints](#-api-endpoints)
-- [Quick Start](#-quick-start)
-- [Deployment](#-deployment)
-- [Project Structure](#-project-structure)
-- [Environment Variables](#-environment-variables)
-- [Development Roadmap](#-development-roadmap)
 
 ---
 
 ## 🎯 Overview
 
-StreamCI is a **real-time CI/CD pipeline monitoring and analytics platform** that processes GitHub webhook events, tracks build metrics, and provides predictive insights to help development teams stay ahead of pipeline failures.
-
-**What makes it different:**
-- 🔴 **Real-time monitoring** via WebSocket connections
-- 📊 **Comprehensive dashboard** with aggregated pipeline metrics
-- 🎯 **Pattern detection** for build success/failure trends
-- ⚡ **Intelligent alerting** based on queue depth and build patterns
-- 🔗 **GitHub integration** with automated webhook processing
-
----
-
-## 💡 The Problem → Solution
-
-### Before StreamCI
-❌ Teams are **reactive** to CI/CD failures  
-❌ Builds break **unexpectedly** with no warning  
-❌ Queue congestion discovered **after** it impacts deployment  
-❌ Pattern analysis done **manually** across multiple platforms
-
-### After StreamCI
-✅ **Proactive monitoring** with early warning signals  
-✅ **Real-time visibility** into all pipeline activity  
-✅ **Automated pattern detection** for success rates and trends  
-✅ **Unified dashboard** for comprehensive CI/CD analytics
-
-**Example:**  
-Instead of discovering queue backup when developers complain, StreamCI detects increasing queue depth and alerts you 20 minutes before it impacts deployments.
+StreamCI is a **real-time CI/CD pipeline monitoring and analytics platform** that processes GitHub webhook events, tracks build metrics
 
 ---
 
@@ -84,29 +45,7 @@ Instead of discovering queue backup when developers complain, StreamCI detects i
 
 **API:** `POST /api/webhooks/github`
 
-### 📈 **Analytics & Trends**
-- Historical success rate trends
-- Build frequency analysis
-- Average duration tracking
-- Performance degradation detection
 
-**API:** `GET /api/trends?days=7`
-
-### 🔔 **Intelligent Alerting**
-- Queue congestion warnings
-- Success rate degradation alerts
-- Build duration anomalies
-- Pattern-based predictions
-
-**API:** `GET /api/alerts`
-
-### 🔮 **Predictive Analytics** *(Under Development)*
-- ML-based failure prediction
-- Pattern recognition for proactive alerts
-- Success probability scoring
-- Trend-based forecasting
-
----
 
 ## 🏗️ Architecture
 
@@ -431,52 +370,6 @@ streamci-backend/
 - [x] Docker containerization
 - [x] Google Cloud Run deployment
 
-### 🚧 **In Development**
-- [ ] **Predictive Analytics** - ML-based failure prediction
-- [ ] **Pattern Recognition** - Advanced anomaly detection
-- [ ] **Success Probability** - Build success likelihood scoring
-- [ ] **Trend Forecasting** - Proactive performance alerts
 
-### 📋 **Future Considerations**
-- [ ] Multi-platform support (Jenkins, GitLab CI, CircleCI)
-- [ ] Advanced visualization endpoints
-- [ ] Historical data export
-- [ ] Custom alert rule configuration
-- [ ] Team collaboration features
-
----
-
-## 🤝 Contributing
-
-This is a portfolio project currently under active development. Contributions, issues, and feature requests are welcome!
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
----
-
-## 📝 License
-
-This project is for educational and portfolio purposes.
-
----
-
-## 📧 Contact
-
-For questions or collaboration opportunities, please reach out via GitHub.
-
----
-
-## 🙏 Acknowledgments
-
-- **Spring Boot** for the excellent framework
-- **Supabase** for managed PostgreSQL
-- **Google Cloud** for serverless deployment
-- **GitHub** for webhook integration
-
----
 
 **Built with ❤️ using Spring Boot and Java**
