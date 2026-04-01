@@ -1,4 +1,4 @@
-# 🚀 StreamCI Backend
+#  StreamCI Backend
 
 > **Real-time CI/CD pipeline analytics**
 
@@ -14,22 +14,22 @@
 
 ---
 
-## 🎯 Overview
+##  Overview
 
 StreamCI is a **real-time CI/CD pipeline monitoring and analytics platform** that processes GitHub webhook events, tracks build metrics
 
 ---
 
-## ✨ Features
+##  Features
 
-### 🔴 **Real-Time Monitoring**
+###  **Real-Time Monitoring**
 - Live WebSocket updates for build status changes
 - Dashboard with instant metrics refresh
 - Current queue depth and concurrent build tracking
 
 **API:** `GET /api/dashboard/live`
 
-### 📊 **Unified Dashboard**
+###  **Unified Dashboard**
 - Aggregated metrics across all pipelines
 - Success rates, build counts, and trends
 - Recent activity tracking (last 24 hours)
@@ -37,7 +37,7 @@ StreamCI is a **real-time CI/CD pipeline monitoring and analytics platform** tha
 
 **API:** `GET /api/dashboard/summary`
 
-### 🔗 **GitHub Webhook Integration**
+###  **GitHub Webhook Integration**
 - Automated processing of `workflow_run` events
 - Build lifecycle tracking (queued → in_progress → completed)
 - Repository and pipeline management
@@ -47,7 +47,7 @@ StreamCI is a **real-time CI/CD pipeline monitoring and analytics platform** tha
 
 
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────┐
@@ -123,7 +123,7 @@ StreamCI is a **real-time CI/CD pipeline monitoring and analytics platform** tha
 
 ---
 
-## 🔌 API Endpoints
+##  API Endpoints
 
 ### **Dashboard & Monitoring**
 
@@ -333,7 +333,7 @@ streamci-backend/
 
 ---
 
-## 🔐 Environment Variables
+## Environment Variables
 
 ### **Required for Production**
 
@@ -359,7 +359,7 @@ streamci-backend/
 
 ## 🗺️ Development Roadmap
 
-### ✅ **Completed**
+###  **Completed**
 - [x] GitHub webhook integration (workflow_run events)
 - [x] Real-time dashboard with WebSocket support
 - [x] Pipeline and build tracking
